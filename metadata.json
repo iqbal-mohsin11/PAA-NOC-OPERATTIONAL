@@ -1,0 +1,6 @@
+{
+  "name": "PAA Sentinel v5.0 - IT Inventory & Infrastructure Management",
+  "description": "Enterprise IT Infrastructure, Network Operations & Asset Management System for Pakistan Airports Authority (PAA Sentinel v5.0)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
