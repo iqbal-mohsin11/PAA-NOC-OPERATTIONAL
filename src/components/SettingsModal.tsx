@@ -4,13 +4,43 @@ import { AddDepartmentModal } from './AddDepartmentModal';
 import { AddBrandModal } from './AddBrandModal';
 import { AddVendorModal } from './AddVendorModal';
 import { AddCategoryModal } from './AddCategoryModal';
-import { Settings, Download, Upload, Moon, Sun, Building, Building2, Database, X, ShieldCheck, RefreshCw, Server, Plus, Tag, Store, Layers, Lock, Key, Eye, EyeOff, CheckCircle2, Wrench, ShieldAlert } from 'lucide-react';
+import {
+  Settings,
+  Download,
+  Upload,
+  Moon,
+  Sun,
+  Building,
+  Building2,
+  Database,
+  X,
+  ShieldCheck,
+  RefreshCw,
+  Server,
+  Plus,
+  Tag,
+  Store,
+  Layers,
+  Lock,
+  Key,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Wrench,
+  ShieldAlert,
+  Trash2,
+  RotateCcw,
+  Search,
+  ExternalLink,
+  AlertTriangle,
+} from 'lucide-react';
 
 interface SettingsModalProps {
   onClose: () => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigateTab }) => {
   const {
     settings,
     updateSettings,
@@ -25,11 +55,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     allCategories,
     rolePasswords,
     updateRolePasswords,
+    assets,
+    restoreAsset,
+    deletePermanently,
   } = useInventory();
 
   const [orgName, setOrgName] = useState(settings.organizationName);
   const [airportName, setAirportName] = useState(settings.airportName);
   const [code, setCode] = useState(settings.airportCode);
+
+  // Deleted Data Asset Entries State
+  const [showDeletedList, setShowDeletedList] = useState(false);
+  const [deletedSearch, setDeletedSearch] = useState('');
+  const [deletedActionMsg, setDeletedActionMsg] = useState<string | null>(null);
+
+  const deletedAssets = assets.filter((a) => a.isRemoved);
+
+  const filteredDeletedAssets = deletedAssets.filter((item) => {
+    if (!deletedSearch.trim()) return true;
+    const q = deletedSearch.toLowerCase();
+    return (
+      item.name.toLowerCase().includes(q) ||
+      item.id.toLowerCase().includes(q) ||
+      item.department.toLowerCase().includes(q) ||
+      (item.removalDetails?.reason || '').toLowerCase().includes(q) ||
+      (item.removalDetails?.removedBy || '').toLowerCase().includes(q)
+    );
+  });
+
+  const handleRestoreAll = () => {
+    if (deletedAssets.length === 0) return;
+    if (confirm(`Restore all ${deletedAssets.length} soft-deleted asset entries back to active inventory?`)) {
+      deletedAssets.forEach((item) => restoreAsset(item.id));
+      setDeletedActionMsg(`All ${deletedAssets.length} deleted asset entries restored successfully!`);
+      setTimeout(() => setDeletedActionMsg(null), 3000);
+    }
+  };
+
+  const handlePurgeAll = () => {
+    if (deletedAssets.length === 0) return;
+    if (confirm(`CRITICAL WARNING: Permanently hard-delete all ${deletedAssets.length} soft-deleted asset records? This action CANNOT be undone.`)) {
+      deletedAssets.forEach((item) => deletePermanently(item.id));
+      setDeletedActionMsg(`All soft-deleted records purged permanently.`);
+      setTimeout(() => setDeletedActionMsg(null), 3000);
+    }
+  };
 
   // Role Passwords State
   const [adminPass, setAdminPass] = useState(rolePasswords?.Administrator || 'admin123');
@@ -429,6 +499,168 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Deleted Data Asset Entries Management */}
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 dark:border-amber-500/30 dark:bg-amber-950/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trash2 className="h-4 w-4 text-amber-500" />
+                <h4 className="font-bold text-amber-800 dark:text-amber-300 text-xs">
+                  Deleted Data Asset Entries Directory
+                </h4>
+                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold text-amber-700 dark:text-amber-300">
+                  {deletedAssets.length} Soft-Deleted
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigateTab('removed');
+                      onClose();
+                    }}
+                    className="flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-900/60 dark:text-amber-200 transition"
+                    title="Open Full Removed Assets Archive Page"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    <span>View Archive</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedList(!showDeletedList)}
+                  className="flex items-center gap-1 rounded-xl bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-500 shadow-sm transition"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>{showDeletedList ? 'Hide Deleted Entries' : 'Manage Deleted Entries'}</span>
+                </button>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-600 dark:text-slate-300">
+              Audit-compliant archive containing all soft-deleted assets (Scrap, BER, Transfer, Disposed, Lost). You can restore individual or bulk deleted entries, or permanently purge them.
+            </p>
+
+            {deletedActionMsg && (
+              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                <span>{deletedActionMsg}</span>
+              </div>
+            )}
+
+            {showDeletedList && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-amber-900/40 dark:bg-slate-900 space-y-3 animate-fadeIn">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search deleted entries by ID, name, officer..."
+                      value={deletedSearch}
+                      onChange={(e) => setDeletedSearch(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 py-1 text-xs outline-none focus:border-amber-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  {deletedAssets.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRestoreAll}
+                        className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-500"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Restore All ({deletedAssets.length})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handlePurgeAll}
+                        className="flex items-center gap-1 rounded-lg bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-rose-500"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Purge All</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {filteredDeletedAssets.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    {deletedAssets.length === 0
+                      ? 'No soft-deleted asset entries present in system memory.'
+                      : 'No deleted entries match search query.'}
+                  </div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                    {filteredDeletedAssets.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-800/60 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                            <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                              {item.id}
+                            </span>
+                            <span>{item.name}</span>
+                            <span className="rounded-full bg-slate-200 px-2 py-0.2 text-[9px] font-extrabold text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                              {item.department}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                            <span>Reason: <strong className="text-rose-600 dark:text-rose-400">{item.removalDetails?.reason || 'Scrap'}</strong></span>
+                            <span>•</span>
+                            <span>By: {item.removalDetails?.removedBy || 'N/A'}</span>
+                            <span>•</span>
+                            <span>Date: {item.removalDetails?.date || 'N/A'}</span>
+                          </div>
+                          {item.removalDetails?.remarks && (
+                            <p className="text-[10px] text-slate-400 italic mt-0.5">
+                              "{item.removalDetails.remarks}"
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              restoreAsset(item.id);
+                              setDeletedActionMsg(`Asset ${item.id} restored to inventory!`);
+                              setTimeout(() => setDeletedActionMsg(null), 3000);
+                            }}
+                            className="flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500 shadow-2xs"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Restore</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Permanently delete record ${item.id}? This CANNOT be undone.`)) {
+                                deletePermanently(item.id);
+                                setDeletedActionMsg(`Asset ${item.id} permanently purged.`);
+                                setTimeout(() => setDeletedActionMsg(null), 3000);
+                              }
+                            }}
+                            className="flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 shadow-2xs"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>Purge</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Database Backup & Restore */}

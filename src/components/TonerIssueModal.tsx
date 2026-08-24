@@ -19,22 +19,27 @@ import {
   Download,
   AlertCircle,
   FileSpreadsheet,
+  RotateCw,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TonerIssueModalProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedAsset?: AssetItem | null;
+  initialMode?: 'new' | 'refill';
 }
 
 export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
   isOpen,
   onClose,
   preselectedAsset,
+  initialMode = 'new',
 }) => {
   const { assets, tonerIssueRecords, addTonerIssueRecord, allDepartments, userRole } = useInventory();
 
   const [activeTab, setActiveTab] = useState<'issue' | 'logs'>('issue');
+  const [issueType, setIssueType] = useState<'new' | 'refill'>(initialMode);
 
   // Form State
   const [issuedDate, setIssuedDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -52,7 +57,9 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
     preselectedAsset ? preselectedAsset.assignedUser : ''
   );
   const [issuedBy, setIssuedBy] = useState<string>(`${userRole} Officer`);
-  const [remarks, setRemarks] = useState<string>('');
+  const [remarks, setRemarks] = useState<string>(
+    initialMode === 'refill' ? 'Refilled toner cartridge replacement & level replenished to 100%' : ''
+  );
   const [updateTonerLevel, setUpdateTonerLevel] = useState<boolean>(true);
 
   // Filter State for Logs
@@ -92,6 +99,12 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
 
     const matchedPrinter = printerAssets.find((p) => p.id === selectedAssetId);
 
+    const formattedRemarks = issueType === 'refill'
+      ? remarks.trim()
+        ? `[REFILL TONER ISSUE] ${remarks.trim()}`
+        : '[REFILL TONER ISSUE] Refilled toner cartridge replacement & level replenished to 100%'
+      : remarks.trim() || undefined;
+
     addTonerIssueRecord(
       {
         issuedDate,
@@ -102,7 +115,7 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
         quantity: Number(quantity) || 1,
         issuedBy: issuedBy.trim() || `${userRole} Officer`,
         recipientUser: recipientUser.trim() || undefined,
-        remarks: remarks.trim() || undefined,
+        remarks: formattedRemarks,
       },
       updateTonerLevel
     );
@@ -111,6 +124,17 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
     setRemarks('');
     setQuantity(1);
     setActiveTab('logs');
+  };
+
+  const handleQuickRefillFromLog = (record: any) => {
+    setDepartment(record.department);
+    if (record.assetId) setSelectedAssetId(record.assetId);
+    setTonerModel(record.tonerModel);
+    if (record.recipientUser) setRecipientUser(record.recipientUser);
+    setIssueType('refill');
+    setRemarks('Refilled toner cartridge replacement & level replenished to 100%');
+    setUpdateTonerLevel(true);
+    setActiveTab('issue');
   };
 
   // Filtered Logs
@@ -189,19 +213,42 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100/60 px-6 py-2 dark:border-slate-800 dark:bg-slate-800/30">
-          <div className="flex items-center gap-2">
+        {/* Tab Switcher & Quick Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-100/60 px-6 py-2.5 dark:border-slate-800 dark:bg-slate-800/30">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setActiveTab('issue')}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
-                activeTab === 'issue'
+              onClick={() => {
+                setActiveTab('issue');
+                setIssueType('new');
+              }}
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                activeTab === 'issue' && issueType === 'new'
                   ? 'bg-emerald-600 text-white shadow-md'
                   : 'bg-white text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
               <Plus className="h-4 w-4" />
-              <span>Issue New Toner Cartridge</span>
+              <span>Issue New Cartridge</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('issue');
+                setIssueType('refill');
+                if (!remarks) {
+                  setRemarks('Refilled toner cartridge replacement & level replenished to 100%');
+                }
+                setUpdateTonerLevel(true);
+              }}
+              className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                activeTab === 'issue' && issueType === 'refill'
+                  ? 'bg-teal-600 text-white shadow-md'
+                  : 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50 dark:bg-slate-900 dark:text-teal-300 dark:border-teal-900 dark:hover:bg-teal-950/50'
+              }`}
+              title="Quick Refill Toner Issue"
+            >
+              <RotateCw className="h-4 w-4 text-teal-500 dark:text-teal-400" />
+              <span>Refill Toner Issue</span>
             </button>
 
             <button
@@ -213,7 +260,7 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
               }`}
             >
               <FileText className="h-4 w-4" />
-              <span>Departmental Toner Register ({tonerIssueRecords.length} Dated Records)</span>
+              <span>Toner Register Log ({tonerIssueRecords.length})</span>
             </button>
           </div>
 
@@ -244,10 +291,55 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
         {/* Tab 1: Issue Toner Form */}
         {activeTab === 'issue' && (
           <form onSubmit={handleSubmitIssue} className="p-6 space-y-5">
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+            {/* Issue Mode Toggle Cards */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setIssueType('new')}
+                className={`flex items-center justify-center gap-2 rounded-xl p-3 text-xs font-bold border transition ${
+                  issueType === 'new'
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-600'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400'
+                }`}
+              >
+                <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>📦 New Cartridge Issue</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIssueType('refill');
+                  if (!remarks) {
+                    setRemarks('Refilled toner cartridge replacement & level replenished to 100%');
+                  }
+                  setUpdateTonerLevel(true);
+                }}
+                className={`flex items-center justify-center gap-2 rounded-xl p-3 text-xs font-bold border transition ${
+                  issueType === 'refill'
+                    ? 'border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-600 shadow-xs'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400'
+                }`}
+              >
+                <RotateCw className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <span>🔄 Refill Toner Issue</span>
+              </button>
+            </div>
+
+            <div className={`rounded-xl border p-3 text-xs flex items-start gap-2.5 ${
+              issueType === 'refill'
+                ? 'border-teal-500/30 bg-teal-500/10 text-teal-900 dark:text-teal-200'
+                : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+            }`}>
+              {issueType === 'refill' ? (
+                <RotateCw className="h-4 w-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
               <span>
-                Register a new toner or ink cartridge issue voucher. Select department, issue date, toner cartridge model, quantity, and recipient officer.
+                {issueType === 'refill'
+                  ? 'Refill Toner Mode Enabled: Registers a toner cartridge refill issue voucher and automatically resets the printer toner level back to 100%.'
+                  : 'Register a standard new toner/ink cartridge issue voucher. Select department, issue date, toner cartridge model, quantity, and recipient officer.'}
               </span>
             </div>
 
@@ -312,6 +404,66 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
                 </div>
               </div>
 
+              {/* Quick Select Printer Model & Toner Presets */}
+              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-800/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <PrinterIcon className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                    <span>Quick Select Printer Model & Cartridge Spec</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">Click model to auto-fill toner spec</span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'HP 1102W', model: 'HP LaserJet Pro P1102w', toner: 'HP 85A (CE285A)' },
+                    { label: 'HP 102', model: 'HP LaserJet Pro M102a/w', toner: 'HP 17A (CF217A)' },
+                    { label: 'HP 402', model: 'HP LaserJet Pro M402dn', toner: 'HP 26A (CF226A)' },
+                    { label: 'HP 1320', model: 'HP LaserJet 1320', toner: 'HP 49A (Q5949A)' },
+                    { label: 'HP M 600', model: 'HP LaserJet Enterprise 600 M601', toner: 'HP 90A (CE390A)' },
+                    { label: 'HP M 602', model: 'HP LaserJet Enterprise M602dn', toner: 'HP 90A (CE390A)' },
+                    { label: 'HP 2300', model: 'HP LaserJet 2300', toner: 'HP 10A (Q2610A)' },
+                    { label: 'BROTHER', model: 'Brother Laser Printer', toner: 'Brother TN-2380 / TN-2420' },
+                    { label: 'EPSON INK JET', model: 'Epson EcoTank InkJet', toner: 'Epson 003 / 664 Ink Bottle' },
+                  ].map((p) => {
+                    const isSelected = tonerModel.includes(p.toner) || tonerModel.includes(p.label);
+                    return (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => {
+                          setTonerModel(`${p.toner} (${p.label})`);
+                          // Auto match asset if available
+                          const matchingPrinter = printerAssets.find(
+                            (item) =>
+                              item.name.toLowerCase().includes(p.label.toLowerCase().replace(/\s+/g, '')) ||
+                              (item.printerSpecs?.tonerModel && item.printerSpecs.tonerModel.toLowerCase().includes(p.toner.toLowerCase().slice(0, 5)))
+                          );
+                          if (matchingPrinter) {
+                            setSelectedAssetId(matchingPrinter.id);
+                            setDepartment(matchingPrinter.department);
+                            if (matchingPrinter.assignedUser) {
+                              setRecipientUser(matchingPrinter.assignedUser);
+                            }
+                          }
+                        }}
+                        className={`group relative flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition border ${
+                          isSelected
+                            ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-teal-400 hover:bg-teal-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800'
+                        }`}
+                        title={`${p.model} - ${p.toner}`}
+                      >
+                        <span>{p.label}</span>
+                        <span className={`text-[10px] font-mono px-1 rounded ${isSelected ? 'bg-teal-700 text-teal-100' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                          {p.toner.split(' ')[1] || p.toner.slice(0, 6)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Toner Cartridge Model */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -322,7 +474,7 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. HP 59A (CF259A), HP 05A, Canon CRG-054..."
+                    placeholder="e.g. HP 85A (CE285A), HP 17A, HP 26A, Brother TN-2380..."
                     value={tonerModel}
                     onChange={(e) => setTonerModel(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -419,10 +571,23 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-emerald-500 transition"
+                className={`flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold text-white shadow-md transition ${
+                  issueType === 'refill'
+                    ? 'bg-teal-600 hover:bg-teal-500'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
-                <Droplet className="h-4 w-4" />
-                <span>Issue Toner & Save Register Record</span>
+                {issueType === 'refill' ? (
+                  <>
+                    <RotateCw className="h-4 w-4" />
+                    <span>Issue Refill Toner & Replenish Gauge</span>
+                  </>
+                ) : (
+                  <>
+                    <Droplet className="h-4 w-4" />
+                    <span>Issue Toner & Save Register Record</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -543,14 +708,26 @@ export const TonerIssueModal: React.FC<TonerIssueModalProps> = ({
                           {log.issuedBy}
                         </td>
                         <td className="px-3.5 py-3 text-right">
-                          <button
-                            onClick={() => setPrintingRecord(log)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                            title="Print Official Toner Voucher"
-                          >
-                            <Printer className="h-3 w-3 text-emerald-500" />
-                            <span>Voucher</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickRefillFromLog(log)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-2 py-1 text-[11px] font-bold text-teal-800 hover:bg-teal-100 dark:border-teal-900 dark:bg-teal-950 dark:text-teal-300 transition"
+                              title="Issue Refill Toner for this Printer / Department"
+                            >
+                              <RotateCw className="h-3 w-3 text-teal-600 dark:text-teal-400" />
+                              <span>Refill</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPrintingRecord(log)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              title="Print Official Toner Voucher"
+                            >
+                              <Printer className="h-3 w-3 text-emerald-500" />
+                              <span>Voucher</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

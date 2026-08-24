@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import {
   X,
@@ -7,6 +7,7 @@ import {
   Plus,
   Trash2,
   FileSpreadsheet,
+  RotateCcw,
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
 
@@ -81,6 +82,36 @@ export const InternalRequisitionFormModal: React.FC<InternalRequisitionFormModal
           },
         ]
   );
+
+  // Sync state when initialData or modal open status changes
+  useEffect(() => {
+    if (isOpen && initialData) {
+      if (initialData.demandingSection) setDemandingSection(initialData.demandingSection);
+      if (initialData.requiredBy) setRequiredBy(initialData.requiredBy);
+      if (initialData.purpose) setPurpose(initialData.purpose);
+      if (initialData.items && initialData.items.length > 0) setItems(initialData.items);
+    }
+  }, [isOpen, initialData]);
+
+  const handleClearToBlankForm = () => {
+    setDemandingSection('');
+    setCopyNo('01 / 03');
+    setReqNo(`REQ-PAA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
+    setReqDate(new Date().toISOString().slice(0, 10));
+    setAuthorityRef('');
+    setLastIssuance('');
+    setRequiredBy('');
+    setPriority('Normal');
+    setBudgetHead('IT Consumables & Toners (A03901)');
+    setPurpose('');
+    setItems([
+      { sNo: 1, refNo: '', description: '', assetInventory: '', partOf: '', uom: 'Nos', qtyReturned: '', qtyDemanded: '', qtySupplied: '' },
+      { sNo: 2, refNo: '', description: '', assetInventory: '', partOf: '', uom: 'Nos', qtyReturned: '', qtyDemanded: '', qtySupplied: '' },
+      { sNo: 3, refNo: '', description: '', assetInventory: '', partOf: '', uom: 'Nos', qtyReturned: '', qtyDemanded: '', qtySupplied: '' },
+      { sNo: 4, refNo: '', description: '', assetInventory: '', partOf: '', uom: 'Nos', qtyReturned: '', qtyDemanded: '', qtySupplied: '' },
+      { sNo: 5, refNo: '', description: '', assetInventory: '', partOf: '', uom: 'Nos', qtyReturned: '', qtyDemanded: '', qtySupplied: '' },
+    ]);
+  };
 
   if (!isOpen) return null;
 
@@ -239,29 +270,40 @@ export const InternalRequisitionFormModal: React.FC<InternalRequisitionFormModal
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
 
-    items.forEach((item, idx) => {
+    const rowsToPrint = [...items];
+    while (rowsToPrint.length < 6) {
+      rowsToPrint.push({
+        sNo: rowsToPrint.length + 1,
+        refNo: '',
+        description: '',
+        assetInventory: '',
+        partOf: '',
+        uom: 'Nos',
+        qtyReturned: '',
+        qtyDemanded: '',
+        qtySupplied: '',
+      });
+    }
+
+    rowsToPrint.slice(0, 7).forEach((item, idx) => {
       doc.text(String(idx + 1), 11, y + 4.5);
-      doc.text(item.refNo || '-', 20, y + 4.5);
+      doc.text(item.refNo || '________', 20, y + 4.5);
 
-      const descShort = doc.splitTextToSize(item.description || 'N/A', 50);
-      doc.text(descShort[0], 42, y + 4.5);
+      const descShort = item.description
+        ? doc.splitTextToSize(item.description, 50)[0]
+        : '________________________________________';
+      doc.text(descShort, 42, y + 4.5);
 
-      doc.text(item.assetInventory || '-', 95, y + 4.5);
-      doc.text(item.partOf || '-', 122, y + 4.5);
+      doc.text(item.assetInventory || '___________', 95, y + 4.5);
+      doc.text(item.partOf || '___________', 122, y + 4.5);
       doc.text(item.uom || 'Nos', 148, y + 4.5);
-      doc.text(String(item.qtyReturned ?? 0), 163, y + 4.5);
-      doc.text(String(item.qtyDemanded ?? 1), 179, y + 4.5);
-      doc.text(String(item.qtySupplied ?? 1), 193, y + 4.5);
+      doc.text(item.qtyReturned !== '' && item.qtyReturned !== undefined ? String(item.qtyReturned) : '___', 160, y + 4.5);
+      doc.text(item.qtyDemanded !== '' && item.qtyDemanded !== undefined ? String(item.qtyDemanded) : '___', 176, y + 4.5);
+      doc.text(item.qtySupplied !== '' && item.qtySupplied !== undefined ? String(item.qtySupplied) : '___', 190, y + 4.5);
 
       y += 6;
       doc.line(8, y, 202, y);
     });
-
-    // Fill remaining table lines up to 8 rows
-    for (let i = items.length; i < 7; i++) {
-      y += 6;
-      doc.line(8, y, 202, y);
-    }
 
     // Signatures Block
     y += 10;
@@ -321,7 +363,7 @@ export const InternalRequisitionFormModal: React.FC<InternalRequisitionFormModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-fadeIn overflow-y-auto">
-      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 overflow-hidden my-auto">
+      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 overflow-hidden my-auto" id="printable-internal-requisition">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/50">
           <div className="flex items-center gap-3">
@@ -344,6 +386,14 @@ export const InternalRequisitionFormModal: React.FC<InternalRequisitionFormModal
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleClearToBlankForm}
+              className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/80 dark:text-amber-300 transition shadow-2xs"
+              title="Clear form to print/download a blank requisition template"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Blank Form Template</span>
+            </button>
             <button
               onClick={exportPDF}
               className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 transition"

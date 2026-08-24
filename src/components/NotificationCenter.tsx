@@ -23,7 +23,9 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
 } from 'lucide-react';
+import { ReturnToSupplyBRModal } from './ReturnToSupplyBRModal';
 
 interface NotificationCenterProps {
   onSelectAsset: (asset: AssetItem) => void;
@@ -64,6 +66,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   // Quick Action Modal States
   const [activeActionItem, setActiveActionItem] = useState<AlertNotificationItem | null>(null);
   const [actionModalType, setActionModalType] = useState<'TONER' | 'WARRANTY' | 'TICKET' | null>(null);
+  const [showReturnToSupplyModal, setShowReturnToSupplyModal] = useState(false);
 
   // Form Inputs for Modals
   const [newTonerLevel, setNewTonerLevel] = useState(100);
@@ -325,6 +328,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowReturnToSupplyModal(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-extrabold text-rose-600 hover:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/50 shadow-sm transition"
+            title="Issue Return to Supply / BR (Beyond Economical Repair) Voucher"
+          >
+            <RotateCcw className="h-4 w-4 text-rose-500" />
+            <span>Return to Supply / BR</span>
+          </button>
+
           {dismissedIds.length > 0 && (
             <button
               onClick={() => setShowDismissed(!showDismissed)}
@@ -726,6 +738,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           </div>
         </div>
       )}
+
+      <ReturnToSupplyBRModal
+        isOpen={showReturnToSupplyModal}
+        onClose={() => setShowReturnToSupplyModal(false)}
+      />
     </div>
   );
 };

@@ -288,6 +288,44 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
           {/* TAB 1: BASIC INFO */}
           {activeTab === 'basic' && (
             <div className="space-y-4">
+              {/* Quick Preset Buttons for New Item Purchasing & Registration */}
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/30 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-emerald-900 dark:text-emerald-300">
+                  <span>🛒 Quick Presets for New Item Purchasing & Entry:</span>
+                  <span className="text-[10px] font-normal text-emerald-700 dark:text-emerald-400">Click preset to quick-fill form</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: '💾 RAM', cat: 'RAM / Memory', name: '16GB DDR4 Desktop RAM Module', brand: 'Kingston / Crucial', model: 'DDR4 3200MHz' },
+                    { label: '💽 SSD', cat: 'SSD / Storage', name: '512GB NVMe M.2 High Speed SSD', brand: 'Samsung / Crucial', model: '980 NVMe M.2' },
+                    { label: '⌨️ KEYBOARD / MOUSE', cat: 'Peripherals', name: 'USB Ergonomic Keyboard & Mouse Set', brand: 'Logitech / HP', model: 'MK120 Combo' },
+                    { label: '🖥️ LED / MONITOR', cat: 'Monitor', name: '24-inch Full HD IPS LED Monitor', brand: 'Dell / HP', model: '2422H FHD LED' },
+                    { label: '💻 PC / DESKTOP', cat: 'Desktop PC', name: 'Core i7 Desktop Workstation', brand: 'Dell / HP', model: 'OptiPlex 7010' },
+                    { label: '🖨️ PRINTER', cat: 'Printer', name: 'Heavy Duty Laser Printer B/W', brand: 'HP LaserJet', model: 'Pro M404dn' },
+                    { label: '🧵 FIBER CABLES / PATCHCORD', cat: 'Network Cables', name: '10m Fiber Optic LC-LC Patchcord', brand: 'Cisco / Panduit', model: 'Single Mode LC-LC' },
+                    { label: '🔌 POWER CABLES', cat: 'Power Cables', name: '1.8m Heavy Duty C13 Power Cable', brand: 'Generic PAA', model: 'C13 Heavy Duty' },
+                    { label: '🔌 USB PRINTER CABLES', cat: 'Printer Cables', name: '3m High-Speed USB 2.0 A-to-B Printer Cable', brand: 'Generic PAA', model: 'USB A-to-B 3m' },
+                    { label: '🧰 NEW TOOLS FOR IT LAB', cat: 'IT Tools & Equipment', name: 'Network Cable Tester & Crimping Tool Kit', brand: 'Fluke / Prokit', model: 'Network Tester & Crimper Set' },
+                    { label: '📦 OTHER DETAILS', cat: 'Accessories & Supplies', name: 'Cat6 Network Patch Cord Roll (305m)', brand: 'D-Link / Schneider', model: 'Cat6 UTP Cable' },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setName(item.name);
+                        setCategory(item.cat);
+                        setBrand(item.brand);
+                        setModel(item.model);
+                      }}
+                      className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 hover:border-emerald-500 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition shadow-2xs"
+                      title={`Quick fill ${item.name}`}
+                    >
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -671,7 +709,49 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
               {/* PRINTER SPECS */}
               {isPrinter && (
                 <div className="space-y-3">
-                  <h4 className="font-bold text-xs text-emerald-600 dark:text-emerald-400">Printer Specific Configurations</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-emerald-600 dark:text-emerald-400">Printer Specific Configurations</h4>
+                    <span className="text-[10px] text-slate-400 font-medium">Quick select model preset</span>
+                  </div>
+
+                  {/* Quick Select Buttons */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40 space-y-1.5">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Standard Printer Model Presets:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'HP 1102W', modelName: 'HP LaserJet Pro P1102w', tonerModel: 'HP 85A (CE285A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP 102', modelName: 'HP LaserJet Pro M102a/w', tonerModel: 'HP 17A (CF217A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP 402', modelName: 'HP LaserJet Pro M402dn', tonerModel: 'HP 26A (CF226A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP 1320', modelName: 'HP LaserJet 1320', tonerModel: 'HP 49A (Q5949A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP M 600', modelName: 'HP LaserJet Enterprise 600 M601', tonerModel: 'HP 90A (CE390A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP M 602', modelName: 'HP LaserJet Enterprise M602dn', tonerModel: 'HP 90A (CE390A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'HP 2300', modelName: 'HP LaserJet 2300', tonerModel: 'HP 10A (Q2610A)', type: 'Laser', colorType: 'Mono' },
+                        { label: 'BROTHER', modelName: 'Brother Laser Printer', tonerModel: 'Brother TN-2380 / TN-2420', type: 'Laser', colorType: 'Mono' },
+                        { label: 'EPSON INK JET', modelName: 'Epson EcoTank InkJet', tonerModel: 'Epson 003 / 664 Ink Bottle', type: 'Inkjet', colorType: 'Color' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            if (!name) setName(preset.modelName);
+                            setPrinterSpecs({
+                              ...printerSpecs,
+                              printerType: preset.type as any,
+                              colorType: preset.colorType as any,
+                              tonerModel: preset.tonerModel,
+                            });
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition"
+                          title={`Auto fill ${preset.modelName} (${preset.tonerModel})`}
+                        >
+                          <span>{preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">Printer Type</label>
@@ -733,6 +813,91 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
                         onChange={(e) => setPrinterSpecs({ ...printerSpecs, tonerLevel: Number(e.target.value) })}
                         className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                       />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SCANNER SPECS & PRESETS */}
+              {category === 'Scanner' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs text-blue-600 dark:text-blue-400">Scanner Specific Configurations</h4>
+                    <span className="text-[10px] text-slate-400 font-medium">Quick select scanner preset</span>
+                  </div>
+
+                  {/* Quick Select Buttons for Scanners */}
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 dark:border-blue-900 dark:bg-blue-950/40 space-y-1.5">
+                    <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">
+                      Standard Scanner Model Presets:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'Fujitsu fi-7160', brandName: 'Fujitsu', modelName: 'fi-7160 Heavy Duty ADF Scanner', type: 'ADF Sheetfed', speed: '60 ppm', duplex: true },
+                        { label: 'HP ScanJet Pro', brandName: 'HP', modelName: 'ScanJet Pro 2600 f1', type: 'Flatbed & ADF', speed: '25 ppm', duplex: true },
+                        { label: 'Canon ImageFORMULA', brandName: 'Canon', modelName: 'ImageFORMULA DR-C225 II', type: 'ADF Sheetfed', speed: '25 ppm', duplex: true },
+                        { label: 'Epson Perfection', brandName: 'Epson', modelName: 'Perfection V600 Photo Scanner', type: 'Flatbed', speed: '15 ppm', duplex: false },
+                        { label: 'Avision ADF', brandName: 'Avision', modelName: 'AV332U Sheetfed Scanner', type: 'ADF Sheetfed', speed: '40 ppm', duplex: true },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            if (!name) setName(preset.modelName);
+                            if (!brand) setBrand(preset.brandName);
+                            if (!model) setModel(preset.label);
+                            setScannerSpecs({
+                              scannerType: preset.type as any,
+                              scanSpeedPpm: preset.speed,
+                              duplexSupported: preset.duplex,
+                              maxResolutionDpi: '600 x 600 DPI',
+                            });
+                          }}
+                          className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[11px] font-bold text-blue-900 hover:border-blue-500 hover:bg-blue-100 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800 transition"
+                          title={`Auto fill ${preset.modelName}`}
+                        >
+                          <span>📄 {preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">Scanner Type</label>
+                      <select
+                        value={scannerSpecs.scannerType || 'ADF Sheetfed'}
+                        onChange={(e) => setScannerSpecs({ ...scannerSpecs, scannerType: e.target.value as any })}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="ADF Sheetfed">ADF Sheetfed</option>
+                        <option value="Flatbed">Flatbed</option>
+                        <option value="Flatbed & ADF">Flatbed & ADF</option>
+                        <option value="Handheld / Portable">Handheld / Portable</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">Scan Speed (PPM)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 60 ppm"
+                        value={scannerSpecs.scanSpeedPpm || ''}
+                        onChange={(e) => setScannerSpecs({ ...scannerSpecs, scanSpeedPpm: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">Duplex (Both Sides)</label>
+                      <select
+                        value={scannerSpecs.duplexSupported ? 'yes' : 'no'}
+                        onChange={(e) => setScannerSpecs({ ...scannerSpecs, duplexSupported: e.target.value === 'yes' })}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="yes">Supported (Duplex)</option>
+                        <option value="no">Single Sided (Simplex)</option>
+                      </select>
                     </div>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import {
   BarChart,
@@ -11,6 +11,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
 import {
   Shield,
@@ -38,24 +39,61 @@ import {
   Mouse,
   Layers,
   Bell,
+  ShoppingCart,
+  Store,
+  Coins,
+  Wallet,
+  TrendingUp,
+  Receipt,
+  Banknote,
+  PackageCheck,
+  FileText,
+  ChevronDown,
+  Laptop,
+  Database,
+  RotateCcw,
 } from 'lucide-react';
 import { AssetItem, DeviceCategory } from '../types/inventory';
 import { NotificationCenter } from './NotificationCenter';
+import { ProcurementFormModal } from './ProcurementFormModal';
+import { InternalRequisitionFormModal } from './InternalRequisitionFormModal';
+import { LogisticsReceivingModal } from './LogisticsReceivingModal';
+import { PCWebFileModal } from './PCWebFileModal';
+import { ReturnToSupplyBRModal } from './ReturnToSupplyBRModal';
+import { RecentActivityPanel } from './RecentActivityPanel';
 
 interface DashboardProps {
-  onNavigateTab: (tab: any) => void;
+  onNavigateTab?: (tab: any) => void;
+  onNavigate?: (tab: any) => void;
   onOpenAddModal: () => void;
-  onOpenExcelImport: () => void;
+  onOpenExcelImport?: () => void;
+  onOpenImportModal?: () => void;
   onSelectAsset: (asset: AssetItem) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateTab,
+  onNavigate,
   onOpenAddModal,
   onOpenExcelImport,
+  onOpenImportModal,
   onSelectAsset,
 }) => {
   const { assets, tickets, facilities, maintenanceRecords, exportDatabaseJson, allDepartments, allCategories } = useInventory();
+
+  // Modal States for Dashboard Toolbar Actions
+  const [showProcurementModal, setShowProcurementModal] = useState<boolean>(false);
+  const [procurementInitialData, setProcurementInitialData] = useState<any>(undefined);
+  const [showRequisitionModal, setShowRequisitionModal] = useState<boolean>(false);
+  const [showLogisticsModal, setShowLogisticsModal] = useState<boolean>(false);
+  const [showPCWebFileModal, setShowPCWebFileModal] = useState<boolean>(false);
+  const [showReturnToSupplyModal, setShowReturnToSupplyModal] = useState<boolean>(false);
+  const [showFormsMenu, setShowFormsMenu] = useState<boolean>(false);
+
+  const handleNav = (tab: string) => {
+    if (onNavigateTab) onNavigateTab(tab);
+    else if (onNavigate) onNavigate(tab);
+  };
 
   // Calculate metrics
   const activeAssets = assets.filter((a) => !a.isRemoved);
@@ -121,6 +159,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  // Asset Utilization Overview Data (Distribution of asset statuses across departments)
+  const departmentUtilizationData = allDepartments
+    .map((dept) => {
+      const deptAssets = activeAssets.filter((a) => a.department === dept);
+      const active = deptAssets.filter((a) => a.status === 'Active').length;
+      const spare = deptAssets.filter((a) => a.status === 'Spare').length;
+      const inRepair = deptAssets.filter((a) => a.status === 'Under Repair').length;
+      const faulty = deptAssets.filter((a) => a.status === 'Faulty' || a.status === 'Retired').length;
+      const total = deptAssets.length;
+      const activeRate = total > 0 ? Math.round((active / total) * 100) : 0;
+      return {
+        department: dept,
+        Active: active,
+        Spare: spare,
+        'In Repair': inRepair,
+        Faulty: faulty,
+        total,
+        activeRate,
+      };
+    })
+    .filter((d) => d.total > 0)
+    .sort((a, b) => b.total - a.total);
+
   // Status Pie Data
   const statusPieData = [
     { name: 'Active', value: activeCount, color: '#10B981' },
@@ -128,6 +189,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { name: 'Under Repair', value: repairCount, color: '#F59E0B' },
     { name: 'Faulty', value: faultyCount, color: '#EF4444' },
   ].filter((d) => d.value > 0);
+
+  // Annual Budget & Usage Data Calculations
+  const totalMaintCost = maintenanceRecords.reduce((sum, m) => sum + (m.cost || 0), 0);
+  const annualTotalAllocated = 45000000; // PKR 45 Million
+  const annualUtilizedToDate = 21750000 + totalMaintCost; // PKR 21.75M + actual maintenance
+  const annualCommittedPending = 6250000; // PKR 6.25M
+  const annualRemainingBudget = annualTotalAllocated - (annualUtilizedToDate + annualCommittedPending);
+  const annualUtilizedPct = Math.round((annualUtilizedToDate / annualTotalAllocated) * 100);
+
+  const budgetHeads = [
+    {
+      code: 'A03901',
+      name: 'IT Consumables, Toners & Local Market Purchase',
+      allocated: 12500000,
+      utilized: 6850000,
+      color: '#8B5CF6',
+    },
+    {
+      code: 'A03902',
+      name: 'Hardware Equipment & Workstation Procurement',
+      allocated: 20000000,
+      utilized: 9400000,
+      color: '#10B981',
+    },
+    {
+      code: 'A03903',
+      name: 'Maintenance, Local Market Repairs & Spares',
+      allocated: 8500000,
+      utilized: 3850000 + totalMaintCost,
+      color: '#F59E0B',
+    },
+    {
+      code: 'A03904',
+      name: 'Network Infrastructure, Switches & Fiber Optics',
+      allocated: 4000000,
+      utilized: 1650000,
+      color: '#06B6D4',
+    },
+  ];
+
+  const monthlySpendTrend = [
+    { month: 'Jul', spend: 1800000 },
+    { month: 'Aug', spend: 2100000 },
+    { month: 'Sep', spend: 2400000 },
+    { month: 'Oct', spend: 1950000 },
+    { month: 'Nov', spend: 3200000 },
+    { month: 'Dec', spend: 2800000 },
+    { month: 'Jan', spend: 2500000 },
+    { month: 'Feb', spend: 2250000 },
+    { month: 'Mar (Est)', spend: 2750000 },
+  ];
 
   return (
     <div className="space-y-6 pb-12">
@@ -148,35 +260,223 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
 
-        {/* Quick Action Buttons */}
+        {/* Quick Action Buttons Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* NOC Operations Alerts */}
           <button
-            onClick={() => onNavigateTab('noc_alerts')}
-            className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/20 px-3.5 py-2 text-xs font-bold text-amber-300 transition hover:bg-amber-500/30 shadow-sm"
+            onClick={() => handleNav('noc_alerts')}
+            className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/20 px-3.5 py-2 text-xs font-bold text-amber-300 transition hover:bg-amber-500/30 shadow-sm shrink-0"
+            title="Open NOC Operations Alert & Notification Center"
           >
             <Bell className="h-4 w-4 text-amber-400 animate-pulse" />
             <span>NOC Operations Alerts</span>
+            {openTickets.length > 0 && (
+              <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-extrabold text-white">
+                {openTickets.length}
+              </span>
+            )}
           </button>
+
+          {/* Add Asset */}
           <button
             onClick={onOpenAddModal}
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-md transition hover:bg-emerald-400"
+            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-3.5 py-2 text-xs font-bold text-slate-950 shadow-md transition hover:bg-emerald-400 shrink-0"
           >
             <PlusCircle className="h-4 w-4" />
             <span>Add Asset</span>
           </button>
+
+          {/* Supply HQCAA Item Received */}
           <button
-            onClick={() => onNavigateTab('labels')}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+            onClick={() => setShowLogisticsModal(true)}
+            className="flex items-center gap-2 rounded-xl border border-purple-400/50 bg-purple-600 px-3.5 py-2 text-xs font-extrabold text-white hover:bg-purple-500 shadow-md transition shrink-0"
+            title="Log receiving voucher from Logistics Supply HQCAA"
+          >
+            <PackageCheck className="h-4 w-4 text-purple-100" />
+            <span>Supply HQCAA Item Received</span>
+          </button>
+
+          {/* Return to Supply / BR */}
+          <button
+            onClick={() => setShowReturnToSupplyModal(true)}
+            className="flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/20 px-3.5 py-2 text-xs font-extrabold text-rose-300 hover:bg-rose-500/30 shadow-md transition shrink-0"
+            title="Issue Return to Supply / BR (Beyond Economical Repair) Voucher"
+          >
+            <RotateCcw className="h-4 w-4 text-rose-400" />
+            <span>Return to Supply / BR</span>
+          </button>
+
+          {/* New Item Purchasing */}
+          <button
+            onClick={() => {
+              setProcurementInitialData(undefined);
+              setShowProcurementModal(true);
+            }}
+            className="flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3.5 py-2 text-xs font-bold text-indigo-300 transition hover:bg-indigo-500/30 shadow-sm shrink-0"
+            title="New Item Purchasing: RAM, SSD, Keyboard/Mouse, LED, PC, Printer, Fiber Cables, Power Cables, USB Cables, IT Lab Tools"
+          >
+            <ShoppingCart className="h-4 w-4 text-indigo-400" />
+            <span>New Item Purchasing</span>
+          </button>
+
+          {/* Local Procurement */}
+          <button
+            onClick={() => {
+              setProcurementInitialData({
+                requirementType: 'local',
+                justification: 'Emergency Local Market Procurement for urgent IT operational needs & local hardware consumables.',
+              });
+              setShowProcurementModal(true);
+            }}
+            className="flex items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/20 px-3.5 py-2 text-xs font-bold text-purple-300 transition hover:bg-purple-500/30 shadow-sm shrink-0"
+            title="Local Procurement / Local Market Purchase Request"
+          >
+            <Store className="h-4 w-4 text-purple-400" />
+            <span>Local Procurement</span>
+          </button>
+
+          {/* Official CAAF Forms Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFormsMenu(!showFormsMenu)}
+              className="flex items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3.5 py-2 text-xs font-bold text-indigo-300 transition hover:bg-indigo-500/30 shadow-sm shrink-0"
+              title="Official PAA/CAA Forms (CAAF-001, CAAF-003, CAAF-005)"
+            >
+              <FileText className="h-4 w-4 text-indigo-400" />
+              <span>Official Forms</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </button>
+
+            {showFormsMenu && (
+              <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl text-slate-100 animate-fadeIn">
+                <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Official PAA / CAA Forms
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setProcurementInitialData(undefined);
+                    setShowProcurementModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-indigo-950/60 transition group"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-900 text-indigo-300">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-indigo-400">
+                      IT Procurement Authorization
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-indigo-400">
+                      CAAF-001-XXIT-2.0
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setProcurementInitialData({
+                      requirementType: 'local',
+                      justification: 'Emergency Local Market Procurement for urgent local IT hardware & consumable supplies.',
+                    });
+                    setShowProcurementModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-purple-950/60 transition group"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-900 text-purple-300">
+                    <Store className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-purple-400">
+                      Local Market Procurement Request
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-purple-400">
+                      CAAF-001 [Local Purchase]
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setShowRequisitionModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-emerald-950/60 transition group"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-900 text-emerald-300">
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-400">
+                      Toner & Logistics Internal Demand
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-emerald-400">
+                      CAAF-003-XXLA-1.0 [CAAF-078]
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setShowLogisticsModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-purple-950/60 transition group border-t border-slate-800 mt-1 pt-2"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-900 text-purple-300">
+                    <PackageCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-purple-400">
+                      Logistics (Supply) HQCAA Item Received
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-purple-400">
+                      CAAF-005 [Supply Inward Voucher]
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* QR Labels */}
+          <button
+            onClick={() => handleNav('labels')}
+            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 shrink-0"
           >
             <QrCode className="h-4 w-4 text-emerald-400" />
             <span>QR Labels</span>
           </button>
+
+          {/* Reports */}
           <button
-            onClick={() => onNavigateTab('reports')}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+            onClick={() => handleNav('reports')}
+            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 shrink-0"
           >
             <FileSpreadsheet className="h-4 w-4 text-amber-400" />
             <span>Reports</span>
+          </button>
+
+          {/* Run on PC */}
+          <button
+            onClick={() => setShowPCWebFileModal(true)}
+            className="flex items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/20 px-3.5 py-2 text-xs font-bold text-purple-300 transition hover:bg-purple-500/30 shadow-sm shrink-0"
+            title="Export / Run Web File on PC"
+          >
+            <Laptop className="h-4 w-4 text-purple-400" />
+            <span>Run on PC</span>
+          </button>
+
+          {/* Backup */}
+          <button
+            onClick={exportDatabaseJson}
+            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700 shrink-0"
+            title="Backup JSON Database"
+          >
+            <Database className="h-4 w-4 text-blue-400" />
+            <span>Backup</span>
           </button>
         </div>
       </div>
@@ -253,6 +553,230 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Notification Center System Alerts (Expiring Warranties, Low Toner Levels, Pending Maintenance) */}
       <NotificationCenter onSelectAsset={onSelectAsset} onNavigateTab={onNavigateTab} />
+
+      {/* ANNUAL IT BUDGET ALLOCATION & USAGE OVERVIEW PANEL */}
+      <div className="rounded-2xl border border-purple-200/80 bg-gradient-to-br from-white via-purple-50/20 to-slate-50 p-5 shadow-sm dark:border-purple-900/50 dark:from-slate-900 dark:via-purple-950/20 dark:to-slate-900 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100 pb-3.5 dark:border-purple-900/40">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-600 text-white shadow-md shadow-purple-500/20">
+              <Coins className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-slate-900 text-base dark:text-white">
+                  Annual IT Budget Allocation & Usage Overview
+                </h3>
+                <span className="rounded-md bg-purple-100 dark:bg-purple-950/80 px-2.5 py-0.5 text-xs font-black text-purple-700 dark:text-purple-300">
+                  FY 2025–2026
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Pakistan Airports Authority (HQCAA) - IT Procurement, Local Market Demands & Maintenance Budget Breakdown
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenAddModal}
+              className="flex items-center gap-2 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-500 transition"
+            >
+              <Receipt className="h-4 w-4" />
+              <span>Create Budget Requisition</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Executive Budget KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Card 1: Total Allocated */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Total Annual Allocated
+              </span>
+              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                <Banknote className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2.5">
+              <div className="text-2xl font-black text-slate-900 dark:text-white">
+                PKR {(annualTotalAllocated / 1000000).toFixed(2)}M
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <span>All Budget Heads</span>
+                <span className="text-indigo-600 dark:text-indigo-400">100% Sanctioned</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Utilized Budget */}
+          <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4 shadow-2xs dark:border-purple-900/60 dark:bg-purple-950/30">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-purple-900 dark:text-purple-300">
+                Annual Utilized / Expended
+              </span>
+              <div className="rounded-lg bg-purple-600 p-2 text-white shadow-xs">
+                <Wallet className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2.5">
+              <div className="text-2xl font-black text-purple-950 dark:text-purple-200">
+                PKR {(annualUtilizedToDate / 1000000).toFixed(2)}M
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                <span>PKR {annualUtilizedToDate.toLocaleString()}</span>
+                <span className="font-extrabold bg-purple-200/80 dark:bg-purple-900/80 px-1.5 py-0.5 rounded text-[10px]">
+                  {annualUtilizedPct}% Used
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Committed / Pending */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 shadow-2xs dark:border-amber-900/50 dark:bg-amber-950/20">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                Pending Requisitions
+              </span>
+              <div className="rounded-lg bg-amber-500 p-2 text-white shadow-xs">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2.5">
+              <div className="text-2xl font-black text-amber-950 dark:text-amber-200">
+                PKR {(annualCommittedPending / 1000000).toFixed(2)}M
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                <span>In Procurement Pipeline</span>
+                <span className="font-extrabold text-amber-600 dark:text-amber-400">
+                  {Math.round((annualCommittedPending / annualTotalAllocated) * 100)}% Committed
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Remaining Available */}
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-2xs dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 dark:text-emerald-300">
+                Remaining Available Budget
+              </span>
+              <div className="rounded-lg bg-emerald-600 p-2 text-white shadow-xs">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2.5">
+              <div className="text-2xl font-black text-emerald-950 dark:text-emerald-200">
+                PKR {(annualRemainingBudget / 1000000).toFixed(2)}M
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                <span>Unallocated Balance</span>
+                <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                  {Math.round((annualRemainingBudget / annualTotalAllocated) * 100)}% Free
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Budget Heads Breakdown & Monthly Annual Spending Chart */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-2">
+          {/* Left Sub-Card: Budget Head Breakdown Bars */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <Coins className="h-4 w-4 text-purple-600" />
+                <span>Annual Budget Head Allocation & Utilization</span>
+              </h4>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">4 Active Budget Heads</span>
+            </div>
+
+            <div className="space-y-3.5">
+              {budgetHeads.map((head) => {
+                const pct = Math.round((head.utilized / head.allocated) * 100);
+                return (
+                  <div key={head.code} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                        <span
+                          className="rounded-md px-1.5 py-0.5 text-[10px] font-black text-white"
+                          style={{ backgroundColor: head.color }}
+                        >
+                          {head.code}
+                        </span>
+                        <span className="truncate max-w-[220px] sm:max-w-[300px]">{head.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-slate-900 dark:text-white">
+                          PKR {(head.utilized / 1000000).toFixed(2)}M
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-400 ml-1">
+                          / {(head.allocated / 1000000).toFixed(1)}M
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="h-2.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden relative">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: head.color }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                      <span>Utilized: {pct}%</span>
+                      <span>Remaining: PKR {((head.allocated - head.utilized) / 1000000).toFixed(2)}M</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Sub-Card: Monthly Annual Spending Chart */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800">
+              <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                <span>Monthly Annual Usage Spend Trend (PKR)</span>
+              </h4>
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">FY 2025–26 YTD</span>
+            </div>
+
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlySpendTrend} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748B' }} />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#64748B' }}
+                    tickFormatter={(val) => `${(val / 1000000).toFixed(1)}M`}
+                  />
+                  <Tooltip
+                    formatter={(val: any) => [`PKR ${Number(val).toLocaleString()}`, 'Monthly Expenditure']}
+                    contentStyle={{
+                      backgroundColor: '#0F172A',
+                      borderColor: '#334155',
+                      borderRadius: '8px',
+                      color: '#FFF',
+                      fontSize: '11px',
+                    }}
+                  />
+                  <Bar dataKey="spend" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chronological Recent Activity & Audit Feed Panel */}
+      <RecentActivityPanel
+        onSelectAsset={onSelectAsset}
+        onNavigateTab={(tab) => handleNav(tab)}
+      />
 
       {/* Main Bento Layout: Left 2 Cols (Airport Facilities + Category Matrix + Charts), Right Col (Live NOC Metrics & Critical Assets) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -341,6 +865,97 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
+          {/* Asset Utilization Overview (Recharts Data Visualization across Departments) */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5 dark:border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="font-bold text-slate-900 text-base dark:text-white">Asset Utilization Overview</h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Distribution of asset statuses (Active, Spare, In Repair, Faulty/Retired) across departments.
+                </p>
+              </div>
+
+              {/* Status Summary Pills */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  <span>Active: {activeCount}</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                  <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                  <span>Spare: {spareCount}</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  <span>In Repair: {repairCount}</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
+                  <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                  <span>Faulty: {faultyCount}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recharts Stacked Bar Chart */}
+            <div className="h-64 w-full pt-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={departmentUtilizationData}
+                  margin={{ top: 10, right: 15, left: -10, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis
+                    dataKey="department"
+                    tick={{ fontSize: 10, fill: '#64748B' }}
+                    angle={-15}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0F172A',
+                      borderColor: '#334155',
+                      color: '#F8FAFC',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.4)',
+                    }}
+                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    wrapperStyle={{ paddingBottom: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                  />
+                  <Bar dataKey="Active" name="Active Assets" stackId="utilization" fill="#10B981" />
+                  <Bar dataKey="Spare" name="Spare Inventory" stackId="utilization" fill="#3B82F6" />
+                  <Bar dataKey="In Repair" name="In Repair" stackId="utilization" fill="#F59E0B" />
+                  <Bar dataKey="Faulty" name="Faulty / Retired" stackId="utilization" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Department Active Utilization Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {departmentUtilizationData.slice(0, 4).map((d) => (
+                <div key={d.department} className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50">
+                  <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate" title={d.department}>{d.department}</div>
+                  <div className="mt-1 flex items-baseline justify-between">
+                    <span className="text-xs font-black text-slate-900 dark:text-white">{d.total} Assets</span>
+                    <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">{d.activeRate}% Active</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${d.activeRate}%` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Analytical Charts Row (Department Distribution & Status breakdown) */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -395,7 +1010,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <Activity className="h-4 w-4 text-emerald-400" />
                 <h3 className="font-bold text-sm text-white">NOC Live Infrastructure Metrics</h3>
               </div>
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">Live</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReturnToSupplyModal(true)}
+                  className="flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-300 hover:bg-rose-500/30 transition"
+                  title="Issue Return to Supply / BR Voucher"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Return to Supply / BR</span>
+                </button>
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">Live</span>
+              </div>
             </div>
 
             <div className="mt-4 space-y-3.5 text-xs">
@@ -638,6 +1264,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal Dialogs Triggered from Dashboard Banner */}
+      <ProcurementFormModal
+        isOpen={showProcurementModal}
+        onClose={() => setShowProcurementModal(false)}
+        initialData={procurementInitialData}
+      />
+
+      <InternalRequisitionFormModal
+        isOpen={showRequisitionModal}
+        onClose={() => setShowRequisitionModal(false)}
+      />
+
+      <LogisticsReceivingModal
+        isOpen={showLogisticsModal}
+        onClose={() => setShowLogisticsModal(false)}
+      />
+
+      <PCWebFileModal
+        isOpen={showPCWebFileModal}
+        onClose={() => setShowPCWebFileModal(false)}
+      />
+
+      <ReturnToSupplyBRModal
+        isOpen={showReturnToSupplyModal}
+        onClose={() => setShowReturnToSupplyModal(false)}
+      />
     </div>
   );
 };

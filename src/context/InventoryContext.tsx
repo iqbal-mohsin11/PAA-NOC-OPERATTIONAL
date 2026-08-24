@@ -11,8 +11,9 @@ import {
   Department,
   TonerIssueRecord,
   GatePassRecord,
+  LogisticsReceivingRecord,
 } from '../types/inventory';
-import { initialAssets, initialTickets, initialMaintenanceRecords, initialAuditLogs, initialFacilities, initialSettings, initialTonerIssueRecords, initialGatePassRecords } from '../data/mockData';
+import { initialAssets, initialTickets, initialMaintenanceRecords, initialAuditLogs, initialFacilities, initialSettings, initialTonerIssueRecords, initialGatePassRecords, initialLogisticsReceivingRecords } from '../data/mockData';
 
 export interface RolePasswords {
   Administrator: string;
@@ -26,6 +27,7 @@ interface InventoryContextType {
   maintenanceRecords: MaintenanceRecord[];
   tonerIssueRecords: TonerIssueRecord[];
   gatePassRecords: GatePassRecord[];
+  logisticsReceivingRecords: LogisticsReceivingRecord[];
   auditLogs: AuditLog[];
   facilities: AirportFacility[];
   settings: OrganizationSettings;
@@ -65,6 +67,7 @@ interface InventoryContextType {
   addTonerIssueRecord: (record: Omit<TonerIssueRecord, 'id'>, updatePrinterLevel?: boolean) => void;
   addGatePassRecord: (record: Omit<GatePassRecord, 'id'>) => void;
   updateGatePassStatus: (id: string, status: GatePassRecord['status'], actualReturnDate?: string, securityCleared?: string) => void;
+  addLogisticsReceivingRecord: (recordData: Omit<LogisticsReceivingRecord, 'id' | 'createdAt'>, autoCreateAssets?: boolean) => LogisticsReceivingRecord;
 
   updateSettings: (newSettings: Partial<OrganizationSettings>) => void;
   bulkImportAssets: (newAssets: AssetItem[]) => void;
@@ -225,6 +228,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return deduplicateItems<GatePassRecord>(initial, (gp) => gp.id);
   });
 
+  const [logisticsReceivingRecords, setLogisticsReceivingRecords] = useState<LogisticsReceivingRecord[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_receiving_records`);
+    const initial: LogisticsReceivingRecord[] = saved ? JSON.parse(saved) : initialLogisticsReceivingRecords;
+    return deduplicateItems<LogisticsReceivingRecord>(initial, (rc) => rc.id);
+  });
+
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_logs`);
     return saved ? JSON.parse(saved) : initialAuditLogs;
@@ -363,6 +372,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_gate_passes`, JSON.stringify(gatePassRecords));
   }, [gatePassRecords]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_receiving_records`, JSON.stringify(logisticsReceivingRecords));
+  }, [logisticsReceivingRecords]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_logs`, JSON.stringify(auditLogs));
@@ -639,6 +652,88 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addAuditLog('Gate Pass Status Updated', `Gate Pass ${id} status updated to: ${status}`, undefined, 'info');
   };
 
+  const addLogisticsReceivingRecord = (
+    recordData: Omit<LogisticsReceivingRecord, 'id' | 'createdAt'>,
+    autoCreateAssets = true
+  ): LogisticsReceivingRecord => {
+    const num = logisticsReceivingRecords.length + 1;
+    const year = new Date().getFullYear();
+    const newRecordId = `PAA-RCV-${year}-${String(num).padStart(3, '0')}`;
+
+    const createdAssetIds: string[] = [];
+
+    if (autoCreateAssets && recordData.quantity > 0) {
+      const newAssetsBatch: AssetItem[] = [];
+      const currentAssetCount = assets.length;
+
+      for (let i = 0; i < recordData.quantity; i++) {
+        const assetNum = 10000 + currentAssetCount + i + 1;
+        const newAssetId = `PAA-AST-${assetNum}`;
+        createdAssetIds.push(newAssetId);
+
+        const customSn = recordData.serialNumbers && recordData.serialNumbers[i] && recordData.serialNumbers[i].trim() !== ''
+          ? recordData.serialNumbers[i].trim()
+          : `SN-${(recordData.brand || 'PAA').slice(0, 3).toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        const barcode = `${assetNum}${Math.floor(100000 + Math.random() * 900000)}`;
+        const qrCode = `${newAssetId}|${recordData.brand} ${recordData.model}|${recordData.department}`;
+
+        const newAsset: AssetItem = {
+          id: newAssetId,
+          barcode,
+          qrCode,
+          name: `${recordData.brand} ${recordData.model}`,
+          category: recordData.category,
+          department: recordData.department || 'IT',
+          assignedUser: `IT Store (${recordData.receivingPersonName || 'Store Incharge'})`,
+          paaNumber: recordData.logisticsSupplyRefNo || `PAA/HQ/IT/${year}/${Math.floor(100 + Math.random() * 900)}`,
+          location: {
+            building: recordData.storeLocation || 'IT Central Main Store',
+            floor: 'Ground Floor',
+            room: 'Logistics Receiving Room',
+          },
+          vendorCompany: recordData.localSupplyRefNo ? `Supply LPO (${recordData.localSupplyRefNo})` : 'HQCAA Supply Directorate',
+          brand: recordData.brand,
+          model: recordData.model,
+          serialNumber: customSn,
+          assetTag: `TAG-HQCAA-${Math.floor(1000 + Math.random() * 9000)}`,
+          purchaseDate: recordData.receivedDate || new Date().toISOString().split('T')[0],
+          warrantyExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * 3).toISOString().split('T')[0],
+          status: 'Spare',
+          isRemoved: false,
+          images: { devicePhoto: 'https://images.unsplash.com/photo-1587831990711-23ca6441447b?auto=format&fit=crop&w=600&q=80' },
+          systemSpecs: { processor: recordData.specifications },
+          pingStatus: 'Online',
+          uptime: '1 day',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        newAssetsBatch.push(newAsset);
+      }
+
+      setAssets((prev) => [...newAssetsBatch, ...prev]);
+    }
+
+    const finalRecord: LogisticsReceivingRecord = {
+      ...recordData,
+      id: newRecordId,
+      generatedAssetIds: createdAssetIds.length > 0 ? createdAssetIds : recordData.generatedAssetIds,
+      createdAt: new Date().toISOString(),
+    };
+
+    setLogisticsReceivingRecords((prev) => [finalRecord, ...prev]);
+
+    addAuditLog(
+      'Logistics Item Received',
+      `Received ${recordData.quantity}x ${recordData.brand} ${recordData.model} from Supply HQCAA (${recordData.logisticsSupplyRefNo}). Created ${createdAssetIds.length} inventory asset record(s). Store: ${recordData.storeLocation}.`,
+      createdAssetIds[0],
+      'success'
+    );
+
+    return finalRecord;
+  };
+
   const updateSettings = (newSettings: Partial<OrganizationSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
     addAuditLog('Settings Updated', 'Organization system configurations updated', undefined, 'info');
@@ -796,6 +891,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         maintenanceRecords,
         tonerIssueRecords,
         gatePassRecords,
+        logisticsReceivingRecords,
         auditLogs,
         facilities,
         settings,
@@ -828,6 +924,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addTonerIssueRecord,
         addGatePassRecord,
         updateGatePassStatus,
+        addLogisticsReceivingRecord,
         updateSettings,
         bulkImportAssets,
         exportDatabaseJson,

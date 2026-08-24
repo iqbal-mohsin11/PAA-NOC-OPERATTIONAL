@@ -179,6 +179,29 @@ export interface MaintenanceRecord {
   remarks: string;
 }
 
+export interface LogisticsReceivingRecord {
+  id: string; // e.g. PAA-RCV-2026-001
+  logisticsSupplyRefNo: string; // Supply HQCAA Reference / Delivery Note No
+  localSupplyRefNo: string; // Local Supply Reference / LPO No
+  receivedDate: string; // YYYY-MM-DD
+  category: DeviceCategory;
+  brand: string;
+  model: string;
+  specifications: string;
+  quantity: number;
+  unitCostPkr?: number;
+  totalCostPkr?: number;
+  storeLocation: string; // e.g. IT Main Store HQCAA
+  receivingPersonName: string;
+  receivingPersonDesignation: string;
+  receivingPersonDate: string;
+  department: Department;
+  serialNumbers?: string[];
+  generatedAssetIds?: string[];
+  remarks?: string;
+  createdAt: string;
+}
+
 export interface TonerIssueRecord {
   id: string; // e.g. PAA-TNR-1001
   issuedDate: string; // YYYY-MM-DD

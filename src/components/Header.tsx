@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { ProcurementFormModal } from './ProcurementFormModal';
 import { InternalRequisitionFormModal } from './InternalRequisitionFormModal';
+import { LogisticsReceivingModal } from './LogisticsReceivingModal';
+import { PCWebFileModal } from './PCWebFileModal';
 import {
   Shield,
   Search,
@@ -25,6 +27,10 @@ import {
   User,
   FileText,
   FileSpreadsheet,
+  ShoppingCart,
+  Store,
+  Laptop,
+  PackageCheck,
 } from 'lucide-react';
 import { UserRole } from '../types/inventory';
 import { RolePasswordModal } from './RolePasswordModal';
@@ -60,7 +66,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showFormsMenu, setShowFormsMenu] = useState(false);
   const [showProcurementModal, setShowProcurementModal] = useState(false);
+  const [procurementInitialData, setProcurementInitialData] = useState<any>(undefined);
   const [showRequisitionModal, setShowRequisitionModal] = useState(false);
+  const [showLogisticsModal, setShowLogisticsModal] = useState(false);
+  const [showPCWebFileModal, setShowPCWebFileModal] = useState(false);
 
   const roleUsernames: Record<UserRole, string> = {
     Administrator: 'admin_paa',
@@ -80,156 +89,70 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   const roles: UserRole[] = ['Administrator', 'Technician', 'Viewer'];
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-100">
-      {/* Brand & Identity */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-600 via-teal-700 to-cyan-800 text-white shadow-md shadow-emerald-500/20">
-          <Shield className="h-6 w-6" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-bold text-slate-900 tracking-tight text-base sm:text-lg dark:text-white">
-              {settings.orgName}
-            </h1>
-            <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400">
-              PAA Asset Hub v5.0
-            </span>
+    <header className="sticky top-0 z-30 w-full border-b border-slate-200 bg-white/95 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-100 shadow-sm">
+      {/* Tier 1: Main Top Header (Brand, Search & Account Utilities) */}
+      <div className="flex h-14 w-full items-center justify-between px-4 border-b border-slate-100 dark:border-slate-800/60">
+        {/* Brand & Identity */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-600 via-teal-700 to-cyan-800 text-white shadow-md shadow-emerald-500/20">
+            <Shield className="h-5 w-5" />
           </div>
-          <p className="hidden text-xs text-slate-500 sm:block dark:text-slate-400">
-            {settings.airportName}
-          </p>
-        </div>
-      </div>
-
-      {/* Global Search Bar */}
-      <div className="hidden max-w-md flex-1 px-6 md:flex">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search Asset ID, Serial #, IP, MAC, User, Dept, Model..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-4 py-2 text-xs font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:bg-slate-900"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Action Icons & Controls */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Dedicated Separate NOC Operations Alert & Notification Center Button */}
-        {onNavigateTab && (
-          <button
-            onClick={() => onNavigateTab('noc_alerts')}
-            className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-500/20 dark:bg-amber-500/20 dark:text-amber-300 transition"
-            title="Open NOC Operations Alert & Notification Center"
-          >
-            <Bell className="h-4 w-4 text-amber-500 animate-pulse" />
-            <span className="hidden sm:inline">NOC Alerts</span>
-            {totalNocAlertsCount > 0 && (
-              <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-extrabold text-white">
-                {totalNocAlertsCount}
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-bold text-slate-900 tracking-tight text-sm sm:text-base dark:text-white">
+                {settings.orgName}
+              </h1>
+              <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400">
+                PAA Asset Hub v5.0
               </span>
-            )}
-          </button>
-        )}
-
-        {/* Official CAAF Forms Dropdown Button */}
-        <div className="relative">
-          <button
-            onClick={() => setShowFormsMenu(!showFormsMenu)}
-            className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-300 transition"
-            title="Official PAA/CAA Forms (CAAF-001 & CAAF-003)"
-          >
-            <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="hidden lg:inline">Official Forms</span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-          </button>
-
-          {showFormsMenu && (
-            <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-fadeIn">
-              <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Official PAA / CAA Forms
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowFormsMenu(false);
-                  setShowProcurementModal(true);
-                }}
-                className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition group"
-              >
-                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                  <FileText className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                    IT Procurement Authorization
-                  </div>
-                  <div className="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                    CAAF-001-XXIT-2.0
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowFormsMenu(false);
-                  setShowRequisitionModal(true);
-                }}
-                className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition group"
-              >
-                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                  <FileSpreadsheet className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
-                    Toner & Logistics Internal Demand
-                  </div>
-                  <div className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    CAAF-003-XXLA-1.0 [CAAF-078]
-                  </div>
-                </div>
-              </button>
             </div>
-          )}
+            <p className="hidden text-[11px] text-slate-500 sm:block dark:text-slate-400">
+              {settings.airportName}
+            </p>
+          </div>
         </div>
 
-        {/* Backup Quick Action */}
-        <button
-          onClick={exportDatabaseJson}
-          className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 sm:flex"
-          title="Backup JSON Database"
-        >
-          <Database className="h-4 w-4 text-blue-500" />
-          <span className="hidden xl:inline">Backup</span>
-        </button>
+        {/* Global Search Bar */}
+        <div className="hidden max-w-md flex-1 px-6 md:flex">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search Asset ID, Serial #, IP, MAC, User, Dept, Model..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-4 py-1.5 text-xs font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:bg-slate-900"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-          title="Toggle Light / Dark Mode"
-        >
-          {settings.theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-700" />}
-        </button>
+        {/* Utility Controls & Login */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            title="Toggle Light / Dark Mode"
+          >
+            {settings.theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-700" />}
+          </button>
 
-        {/* System Settings Button */}
-        <button
-          onClick={onOpenSettings}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-          title="PAA System Settings & Role Security Passwords"
-        >
-          <Settings className="h-4 w-4 text-slate-600 dark:text-slate-300 hover:text-emerald-500" />
-        </button>
+          {/* System Settings Button */}
+          <button
+            onClick={onOpenSettings}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+            title="PAA System Settings & Role Security Passwords"
+          >
+            <Settings className="h-4 w-4 text-slate-600 dark:text-slate-300 hover:text-emerald-500" />
+          </button>
 
         {/* Notification Bell & Drawer */}
         <div className="relative">
@@ -377,6 +300,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
           )}
         </div>
       </div>
+    </div>
 
       <RolePasswordModal
         isOpen={!!targetRoleForAuth}
@@ -392,11 +316,22 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
       <ProcurementFormModal
         isOpen={showProcurementModal}
         onClose={() => setShowProcurementModal(false)}
+        initialData={procurementInitialData}
       />
 
       <InternalRequisitionFormModal
         isOpen={showRequisitionModal}
         onClose={() => setShowRequisitionModal(false)}
+      />
+
+      <LogisticsReceivingModal
+        isOpen={showLogisticsModal}
+        onClose={() => setShowLogisticsModal(false)}
+      />
+
+      <PCWebFileModal
+        isOpen={showPCWebFileModal}
+        onClose={() => setShowPCWebFileModal(false)}
       />
     </header>
   );

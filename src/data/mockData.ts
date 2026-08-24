@@ -1,4 +1,4 @@
-import { AssetItem, IssueTicket, MaintenanceRecord, AuditLog, AirportFacility, OrganizationSettings, TonerIssueRecord, GatePassRecord } from '../types/inventory';
+import { AssetItem, IssueTicket, MaintenanceRecord, AuditLog, AirportFacility, OrganizationSettings, TonerIssueRecord, GatePassRecord, LogisticsReceivingRecord } from '../types/inventory';
 
 export const initialGatePassRecords: GatePassRecord[] = [
   {
@@ -114,6 +114,53 @@ export const initialTonerIssueRecords: TonerIssueRecord[] = [
     issuedBy: 'admin_paa',
     recipientUser: 'IT Network Helpdesk',
     remarks: 'Standard monthly toner replacement for IT Helpdesk print server.',
+  },
+];
+
+export const initialLogisticsReceivingRecords: LogisticsReceivingRecord[] = [
+  {
+    id: 'PAA-RCV-2026-001',
+    logisticsSupplyRefNo: 'SUP/HQCAA/LOG/2026/7821',
+    localSupplyRefNo: 'LPO/PAA/IT/2026/3091',
+    receivedDate: '2026-08-01',
+    category: 'Desktop PC',
+    brand: 'HP',
+    model: 'ProDesk 400 G9 Tower',
+    specifications: 'Intel Core i7-13700, 16GB DDR5 RAM, 512GB NVMe SSD, 21.5" IPS Monitor, FreeDOS',
+    quantity: 5,
+    unitCostPkr: 245000,
+    totalCostPkr: 1225000,
+    storeLocation: 'IT Central Store - PAA HQ',
+    receivingPersonName: 'Engr. Tariq Mahmood',
+    receivingPersonDesignation: 'Assistant Director (IT Logistics & Hardware)',
+    receivingPersonDate: '2026-08-01',
+    department: 'IT',
+    serialNumbers: ['SN-HP-883901', 'SN-HP-883902', 'SN-HP-883903', 'SN-HP-883904', 'SN-HP-883905'],
+    generatedAssetIds: ['PAA-AST-10025', 'PAA-AST-10026', 'PAA-AST-10027', 'PAA-AST-10028', 'PAA-AST-10029'],
+    remarks: 'Received in good original sealed condition from HQCAA Supply Directorate.',
+    createdAt: '2026-08-01T10:30:00.000Z',
+  },
+  {
+    id: 'PAA-RCV-2026-002',
+    logisticsSupplyRefNo: 'SUP/HQCAA/LOG/2026/8104',
+    localSupplyRefNo: 'LPO/PAA/IT/2026/3140',
+    receivedDate: '2026-08-05',
+    category: 'Network Switch',
+    brand: 'Cisco',
+    model: 'Catalyst C9300-48P-A',
+    specifications: '48-Port PoE+ Managed Enterprise Switch with Network Advantage License',
+    quantity: 2,
+    unitCostPkr: 1150000,
+    totalCostPkr: 2300000,
+    storeLocation: 'CNS/IT Telecom Equipment Store',
+    receivingPersonName: 'Muhammad Salman',
+    receivingPersonDesignation: 'Superintendent IT Store',
+    receivingPersonDate: '2026-08-05',
+    department: 'CNS',
+    serialNumbers: ['FOC2648L091', 'FOC2648L092'],
+    generatedAssetIds: ['PAA-AST-10030', 'PAA-AST-10031'],
+    remarks: 'Inspected and verified with factory test report. Transferred to CNS telecom rack.',
+    createdAt: '2026-08-05T14:15:00.000Z',
   },
 ];
 

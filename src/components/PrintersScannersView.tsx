@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { AssetItem } from '../types/inventory';
-import { Printer, AlertTriangle, CheckCircle2, Wrench, Search, Plus, Filter, Droplet } from 'lucide-react';
+import { Printer, AlertTriangle, CheckCircle2, Wrench, Search, Plus, Filter, Droplet, RotateCw } from 'lucide-react';
 import { TonerIssueModal } from './TonerIssueModal';
 
 interface PrintersScannersViewProps {
@@ -20,6 +20,9 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
   const [search, setSearch] = useState('');
   const [isTonerModalOpen, setIsTonerModalOpen] = useState(false);
   const [selectedTonerAsset, setSelectedTonerAsset] = useState<AssetItem | null>(null);
+  const [tonerMode, setTonerMode] = useState<'new' | 'refill'>('new');
+
+  const [selectedModelFilter, setSelectedModelFilter] = useState<string>('ALL');
 
   const items = assets.filter(
     (a) => !a.isRemoved && (a.category === 'Printer' || a.category === 'Scanner')
@@ -27,6 +30,11 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
 
   const filtered = items.filter((item) => {
     if (filterType !== 'ALL' && item.category !== filterType) return false;
+    if (selectedModelFilter !== 'ALL') {
+      const target = selectedModelFilter.toLowerCase();
+      const combined = `${item.name} ${item.brand} ${item.model} ${item.printerSpecs?.tonerModel || ''}`.toLowerCase();
+      if (!combined.includes(target)) return false;
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
@@ -44,8 +52,9 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
     (p) => p.category === 'Printer' && p.printerSpecs?.tonerLevel !== undefined && p.printerSpecs.tonerLevel <= 25
   );
 
-  const handleOpenTonerIssue = (asset?: AssetItem) => {
+  const handleOpenTonerIssue = (asset?: AssetItem, mode: 'new' | 'refill' = 'new') => {
     setSelectedTonerAsset(asset || null);
+    setTonerMode(mode);
     setIsTonerModalOpen(true);
   };
 
@@ -68,11 +77,19 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => handleOpenTonerIssue()}
+            onClick={() => handleOpenTonerIssue(undefined, 'refill')}
             className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-teal-500 transition"
           >
+            <RotateCw className="h-4 w-4" />
+            <span>Refill Toner Issue</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenTonerIssue(undefined, 'new')}
+            className="flex items-center gap-2 rounded-xl border border-teal-600 bg-teal-50 px-4 py-2 text-xs font-bold text-teal-800 hover:bg-teal-100 dark:bg-slate-800 dark:text-teal-300 transition"
+          >
             <Droplet className="h-4 w-4" />
-            <span>Departmental Toner Issue & Dated Log</span>
+            <span>Departmental Toner Register</span>
           </button>
 
           <button
@@ -97,13 +114,22 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={() => handleOpenTonerIssue(lowTonerPrinters[0])}
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-amber-500 transition shrink-0"
-          >
-            <Droplet className="h-3.5 w-3.5" />
-            <span>Issue Replenishment Toner</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleOpenTonerIssue(lowTonerPrinters[0], 'refill')}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-teal-500 transition shrink-0"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              <span>Refill Toner Issue</span>
+            </button>
+            <button
+              onClick={() => handleOpenTonerIssue(lowTonerPrinters[0], 'new')}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-amber-500 transition shrink-0"
+            >
+              <Droplet className="h-3.5 w-3.5" />
+              <span>Issue New Toner</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -134,6 +160,95 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
               {type === 'ALL' ? 'All Hardware' : `${type}s`}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Quick Select Model & Scanner Preset Buttons Bar */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Printer className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Quick Filter by Printer & Scanner Models:</span>
+          </span>
+          {selectedModelFilter !== 'ALL' && (
+            <button
+              onClick={() => setSelectedModelFilter('ALL')}
+              className="text-[11px] font-bold text-rose-600 hover:underline dark:text-rose-400"
+            >
+              Reset Model Filter ({selectedModelFilter})
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setSelectedModelFilter('ALL')}
+            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition border ${
+              selectedModelFilter === 'ALL'
+                ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+            }`}
+          >
+            All Models
+          </button>
+
+          {/* Printer Models */}
+          {[
+            { label: 'HP 1102W', filterKey: '1102' },
+            { label: 'HP 102', filterKey: '102' },
+            { label: 'HP 402', filterKey: '402' },
+            { label: 'HP 1320', filterKey: '1320' },
+            { label: 'HP M 600', filterKey: '600' },
+            { label: 'HP M 602', filterKey: '602' },
+            { label: 'HP 2300', filterKey: '2300' },
+            { label: 'BROTHER', filterKey: 'brother' },
+            { label: 'EPSON INK JET', filterKey: 'epson' },
+          ].map((m) => {
+            const isActive = selectedModelFilter === m.filterKey;
+            return (
+              <button
+                key={m.label}
+                onClick={() => {
+                  setSelectedModelFilter(isActive ? 'ALL' : m.filterKey);
+                  setFilterType('Printer');
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition border ${
+                  isActive
+                    ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60'
+                }`}
+              >
+                🖨️ {m.label}
+              </button>
+            );
+          })}
+
+          {/* Scanner Models */}
+          {[
+            { label: 'Fujitsu fi-7160', filterKey: 'fujitsu' },
+            { label: 'HP ScanJet Pro', filterKey: 'scanjet' },
+            { label: 'Canon ImageFORMULA', filterKey: 'canon' },
+            { label: 'Epson Scanner', filterKey: 'perfection' },
+            { label: 'Avision ADF', filterKey: 'avision' },
+          ].map((s) => {
+            const isActive = selectedModelFilter === s.filterKey;
+            return (
+              <button
+                key={s.label}
+                onClick={() => {
+                  setSelectedModelFilter(isActive ? 'ALL' : s.filterKey);
+                  setFilterType('Scanner');
+                }}
+                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition border ${
+                  isActive
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60'
+                }`}
+              >
+                📄 {s.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -190,14 +305,27 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
                       <span>{item.printerSpecs.connectionType}</span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenTonerIssue(item)}
-                      className="mt-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg bg-teal-600/10 hover:bg-teal-600 hover:text-white px-2.5 py-1.5 text-xs font-bold text-teal-700 dark:text-teal-300 transition"
-                    >
-                      <Droplet className="h-3.5 w-3.5" />
-                      <span>Issue Toner to {item.department}</span>
-                    </button>
+                    <div className="mt-2.5 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTonerIssue(item, 'refill')}
+                        className="flex items-center justify-center gap-1 rounded-lg bg-teal-600 hover:bg-teal-500 px-2 py-1.5 text-xs font-bold text-white transition shadow-xs"
+                        title="Issue Refill Toner and reset gauge level to 100%"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" />
+                        <span>Refill Toner</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTonerIssue(item, 'new')}
+                        className="flex items-center justify-center gap-1 rounded-lg bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-1.5 text-xs font-bold text-teal-800 dark:bg-slate-800 dark:border-teal-900 dark:text-teal-300 transition"
+                        title="Issue New Toner Cartridge"
+                      >
+                        <Droplet className="h-3.5 w-3.5 text-teal-600" />
+                        <span>Issue New</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -220,11 +348,11 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
 
                 {isP && (
                   <button
-                    onClick={() => handleOpenTonerIssue(item)}
+                    onClick={() => handleOpenTonerIssue(item, 'refill')}
                     className="flex items-center gap-1 font-bold text-teal-600 hover:underline dark:text-teal-400"
                   >
-                    <Droplet className="h-3.5 w-3.5" />
-                    <span>Issue Toner</span>
+                    <RotateCw className="h-3.5 w-3.5" />
+                    <span>Refill Toner</span>
                   </button>
                 )}
 
@@ -245,6 +373,7 @@ export const PrintersScannersView: React.FC<PrintersScannersViewProps> = ({
         isOpen={isTonerModalOpen}
         onClose={() => setIsTonerModalOpen(false)}
         preselectedAsset={selectedTonerAsset}
+        initialMode={tonerMode}
       />
     </div>
   );

@@ -18,6 +18,7 @@ import { BarcodeModal } from './components/BarcodeModal';
 import { ExcelImportModal } from './components/ExcelImportModal';
 import { SettingsModal } from './components/SettingsModal';
 import { GatePassModal } from './components/GatePassModal';
+import { TonerIssueModal } from './components/TonerIssueModal';
 import { Settings, ShieldCheck, Plus } from 'lucide-react';
 import { AssetItem } from './types/inventory';
 
@@ -38,6 +39,10 @@ const AppContent: React.FC = () => {
   const [showGatePassModal, setShowGatePassModal] = useState(false);
   const [gatePassAsset, setGatePassAsset] = useState<AssetItem | null>(null);
   const [ticketTargetAsset, setTicketTargetAsset] = useState<AssetItem | null>(null);
+
+  const [showTonerModal, setShowTonerModal] = useState(false);
+  const [tonerModalAsset, setTonerModalAsset] = useState<AssetItem | null>(null);
+  const [tonerModalMode, setTonerModalMode] = useState<'new' | 'refill'>('new');
 
   const handleSelectAsset = (asset: AssetItem) => {
     setSelectedAssetDetail(asset);
@@ -236,6 +241,25 @@ const AppContent: React.FC = () => {
             setGatePassAsset(asset);
             setShowGatePassModal(true);
           }}
+          onOpenTonerIssue={(asset, mode) => {
+            setSelectedAssetDetail(null);
+            setTonerModalAsset(asset);
+            setTonerModalMode(mode || 'new');
+            setShowTonerModal(true);
+          }}
+        />
+      )}
+
+      {/* Toner Cartridge Refill & Issue Modal */}
+      {showTonerModal && (
+        <TonerIssueModal
+          isOpen={true}
+          onClose={() => {
+            setShowTonerModal(false);
+            setTonerModalAsset(null);
+          }}
+          preselectedAsset={tonerModalAsset}
+          initialMode={tonerModalMode}
         />
       )}
 
@@ -255,6 +279,10 @@ const AppContent: React.FC = () => {
       {/* System Settings & Backup Modal */}
       {(showSettingsModal || activeTab === 'settings') && (
         <SettingsModal
+          onNavigateTab={(tab) => {
+            setShowSettingsModal(false);
+            setActiveTab(tab);
+          }}
           onClose={() => {
             setShowSettingsModal(false);
             if (activeTab === 'settings') {

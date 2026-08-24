@@ -21,6 +21,10 @@ import {
   MapPin,
   Tag,
   CheckCircle2,
+  Droplet,
+  RotateCw,
+  RefreshCw,
+  Package,
 } from 'lucide-react';
 
 interface AssetDetailModalProps {
@@ -31,6 +35,7 @@ interface AssetDetailModalProps {
   onOpenLabelModal: (asset: AssetItem) => void;
   onOpenIssueModal: (asset: AssetItem) => void;
   onOpenGatePass?: (asset: AssetItem) => void;
+  onOpenTonerIssue?: (asset: AssetItem, mode?: 'new' | 'refill') => void;
 }
 
 export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
@@ -41,13 +46,39 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   onOpenLabelModal,
   onOpenIssueModal,
   onOpenGatePass,
+  onOpenTonerIssue,
 }) => {
-  const { tickets, maintenanceRecords } = useInventory();
+  const { tickets, maintenanceRecords, updateAsset } = useInventory();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'specs' | 'tickets' | 'maintenance'>('overview');
 
   const assetTickets = tickets.filter((t) => t.assetId === asset.id);
   const assetMaintenance = maintenanceRecords.filter((m) => m.assetId === asset.id);
+
+  const isPrinterAsset = asset.category === 'Printer' || !!asset.printerSpecs;
+  const currentTonerLevel = asset.printerSpecs?.tonerLevel ?? 100;
+
+  const handleQuickPresetToner = (tonerModelStr: string) => {
+    if (asset.printerSpecs) {
+      updateAsset(asset.id, {
+        printerSpecs: {
+          ...asset.printerSpecs,
+          tonerModel: tonerModelStr,
+        },
+      });
+    }
+  };
+
+  const handleReplenishGaugeTo100 = () => {
+    if (asset.printerSpecs) {
+      updateAsset(asset.id, {
+        printerSpecs: {
+          ...asset.printerSpecs,
+          tonerLevel: 100,
+        },
+      });
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm overflow-y-auto">
@@ -234,6 +265,118 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                   </div>
                 </div>
 
+                {/* Printer Specific Toner Model & Quick Action Block */}
+                {isPrinterAsset && (
+                  <div className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4 dark:border-teal-900/60 dark:bg-teal-950/30 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-200/60 pb-2.5 dark:border-teal-900/40">
+                      <div className="flex items-center gap-2">
+                        <PrintIcon className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                        <div>
+                          <h4 className="font-bold text-teal-900 dark:text-teal-200 text-sm">Printer & Toner Management</h4>
+                          <p className="text-[11px] text-teal-700 dark:text-teal-400">
+                            Model: <span className="font-bold">{asset.brand} {asset.model}</span> | Cartridge: <span className="font-mono font-bold text-teal-900 dark:text-teal-100">{asset.printerSpecs?.tonerModel || 'HP 85A / Standard'}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onOpenTonerIssue) {
+                              onOpenTonerIssue(asset, 'refill');
+                            } else {
+                              handleReplenishGaugeTo100();
+                            }
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-teal-500 transition"
+                          title="Register Refill Toner Issue & Reset Gauge to 100%"
+                        >
+                          <RotateCw className="h-4 w-4" />
+                          <span>Refill Toner Issue</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onOpenTonerIssue) {
+                              onOpenTonerIssue(asset, 'new');
+                            } else {
+                              handleReplenishGaugeTo100();
+                            }
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 transition"
+                          title="Issue New Toner Cartridge Voucher"
+                        >
+                          <Droplet className="h-4 w-4" />
+                          <span>Issue New Toner</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Toner Gauge Level */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span>Toner Level Remaining</span>
+                        <span className={currentTonerLevel <= 25 ? 'text-rose-600 dark:text-rose-400 font-extrabold' : 'text-teal-700 dark:text-teal-300'}>
+                          {currentTonerLevel}% {currentTonerLevel <= 25 ? '(LOW TONER WARNING)' : ''}
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            currentTonerLevel <= 25
+                              ? 'bg-rose-500'
+                              : currentTonerLevel <= 50
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${currentTonerLevel}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Select Toner Model Buttons */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-teal-900 dark:text-teal-300">
+                        <span>Quick Select Printer Toner Model Buttons:</span>
+                        <span className="text-[10px] text-teal-600 dark:text-teal-400 font-normal">Click to update toner spec</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: 'HP 1102W', toner: 'HP 85A (CE285A)' },
+                          { label: 'HP 102', toner: 'HP 17A (CF217A)' },
+                          { label: 'HP 402', toner: 'HP 26A (CF226A)' },
+                          { label: 'HP 1320', toner: 'HP 49A (Q5949A)' },
+                          { label: 'HP M 600', toner: 'HP 90A (CE390A)' },
+                          { label: 'HP M 602', toner: 'HP 90A (CE390A)' },
+                          { label: 'HP 2300', toner: 'HP 10A (Q2610A)' },
+                          { label: 'BROTHER', toner: 'Brother TN-2380' },
+                          { label: 'EPSON INK JET', toner: 'Epson 003 Ink' },
+                        ].map((p) => {
+                          const isCurrent = asset.printerSpecs?.tonerModel?.includes(p.label) || asset.printerSpecs?.tonerModel?.includes(p.toner);
+                          return (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => handleQuickPresetToner(`${p.toner} (${p.label})`)}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border ${
+                                isCurrent
+                                  ? 'bg-teal-700 text-white border-teal-700 shadow-xs'
+                                  : 'bg-white text-slate-700 border-teal-200 hover:bg-teal-100 dark:bg-slate-900 dark:text-slate-200 dark:border-teal-900 dark:hover:bg-slate-800'
+                              }`}
+                              title={`Set Toner Model to ${p.toner}`}
+                            >
+                              <span>{p.label}</span>
+                              <span className="ml-1 opacity-70 font-mono text-[10px]">({p.toner.split(' ')[1] || p.toner.slice(0, 5)})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
                   <div>
                     <span className="text-slate-400">Purchase Date</span>
@@ -382,14 +525,46 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
 
         {/* Modal Footer */}
         <div className="flex flex-wrap items-center justify-between border-t border-slate-100 px-6 py-4 dark:border-slate-800 gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => onSoftRemove(asset)}
-              className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400"
+              className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400"
             >
               <Trash2 className="h-4 w-4" />
               <span>Soft Remove</span>
             </button>
+
+            {isPrinterAsset && (
+              <>
+                <button
+                  onClick={() => {
+                    if (onOpenTonerIssue) {
+                      onOpenTonerIssue(asset, 'refill');
+                    } else {
+                      handleReplenishGaugeTo100();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-teal-500 shadow-md transition"
+                >
+                  <RotateCw className="h-4 w-4" />
+                  <span>Refill Toner Issue</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (onOpenTonerIssue) {
+                      onOpenTonerIssue(asset, 'new');
+                    } else {
+                      handleReplenishGaugeTo100();
+                    }
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow-md transition"
+                >
+                  <Droplet className="h-4 w-4" />
+                  <span>Issue New Toner</span>
+                </button>
+              </>
+            )}
 
             {onOpenGatePass && (
               <button
