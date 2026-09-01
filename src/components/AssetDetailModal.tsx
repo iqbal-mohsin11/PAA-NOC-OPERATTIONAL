@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { AssetItem } from '../types/inventory';
+import { generateCode128Bars, generateQRMatrix } from '../utils/barcodeQrGenerator';
 import {
   X,
   HardDrive,
@@ -196,21 +197,62 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 </div>
 
                 {/* QR / Barcode Tag Rendering Box */}
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-800/50">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PAA Official Asset Property Tag</div>
-                  <div className="my-2 flex justify-center">
-                    <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-sm">
-                      {/* Barcode visual lines simulation */}
-                      <div className="font-mono text-xs font-black tracking-widest text-slate-900">{asset.barcode}</div>
-                      <div className="h-6 w-36 mx-auto mt-1 flex items-center justify-center space-x-0.5">
-                        {[2, 1, 3, 1, 2, 4, 1, 2, 1, 3, 2, 1, 4, 1, 2, 3, 1, 2].map((w, idx) => (
-                          <div key={idx} className="h-full bg-slate-900" style={{ width: `${w * 1.5}px` }}></div>
-                        ))}
+                {(() => {
+                  const { bars, totalWidth } = generateCode128Bars(asset.barcode || '10001849201', 1.5);
+                  const qrMatrix = generateQRMatrix(`PAA-SENTINEL-VAL:${asset.id}|${asset.serialNumber}`);
+                  return (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center dark:border-slate-800 dark:bg-slate-800/50">
+                      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <span>PAA Property Tag</span>
+                        <span className="text-emerald-600 font-mono">100% SCAN READY</span>
                       </div>
+                      
+                      <div className="my-2 flex items-center justify-center gap-3 p-2 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                        {/* 2D QR Matrix */}
+                        <svg
+                          width="48"
+                          height="48"
+                          viewBox={`0 0 ${qrMatrix.length} ${qrMatrix.length}`}
+                          className="bg-white p-0.5 rounded border border-slate-200 shrink-0"
+                        >
+                          {qrMatrix.map((row, rIdx) =>
+                            row.map((isDark, cIdx) =>
+                              isDark ? <rect key={`${rIdx}-${cIdx}`} x={cIdx} y={rIdx} width="1" height="1" fill="#000000" /> : null
+                            )
+                          )}
+                        </svg>
+
+                        {/* Code 128 Barcode */}
+                        <div className="flex-1 overflow-hidden">
+                          <div className="font-mono text-[11px] font-black tracking-wider text-slate-900">{asset.barcode}</div>
+                          <div className="h-6 w-full flex items-center justify-center py-0.5">
+                            <svg
+                              width={totalWidth}
+                              height="24"
+                              viewBox={`0 0 ${totalWidth} 24`}
+                              className="w-full max-w-[140px]"
+                            >
+                              <rect width="100%" height="100%" fill="#ffffff" />
+                              {bars.map((bar, bIdx) => (
+                                <rect key={bIdx} x={bar.x} y="0" width={bar.width} height="24" fill="#000000" />
+                              ))}
+                            </svg>
+                          </div>
+                          <div className="text-[9px] font-mono font-bold text-slate-500">{asset.assetTag}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenLabelModal(asset)}
+                        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-50 px-2 py-1 text-[11px] font-bold text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:text-cyan-300 transition"
+                      >
+                        <QrCode className="h-3 w-3" />
+                        <span>Print High-Res Thermal Sticker</span>
+                      </button>
                     </div>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{asset.paaNumber}</p>
-                </div>
+                  );
+                })()}
               </div>
 
               {/* Right 2 Columns: Information Details */}

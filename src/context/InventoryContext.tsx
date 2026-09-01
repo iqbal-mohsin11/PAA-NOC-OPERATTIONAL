@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   AssetItem,
   IssueTicket,
@@ -13,12 +13,39 @@ import {
   GatePassRecord,
   LogisticsReceivingRecord,
 } from '../types/inventory';
-import { initialAssets, initialTickets, initialMaintenanceRecords, initialAuditLogs, initialFacilities, initialSettings, initialTonerIssueRecords, initialGatePassRecords, initialLogisticsReceivingRecords } from '../data/mockData';
+import {
+  initialAssets,
+  initialTickets,
+  initialMaintenanceRecords,
+  initialAuditLogs,
+  initialFacilities,
+  initialSettings,
+  initialTonerIssueRecords,
+  initialGatePassRecords,
+  initialLogisticsReceivingRecords,
+} from '../data/mockData';
 
 export interface RolePasswords {
   Administrator: string;
   Technician: string;
   Viewer: string;
+}
+
+export interface DbStatusInfo {
+  isConnected: boolean;
+  dbName: string;
+  host: string;
+  port: number;
+  uriUsed: string;
+  counts?: {
+    assets: number;
+    tickets: number;
+    maintenance: number;
+    logistics: number;
+    gatepasses: number;
+    auditLogs: number;
+  };
+  error?: string | null;
 }
 
 interface InventoryContextType {
@@ -37,6 +64,11 @@ interface InventoryContextType {
   selectedDepartment: string;
   selectedCategory: string;
   selectedStatus: string;
+
+  // MongoDB & Server Connection Status
+  dbStatus: DbStatusInfo;
+  isSyncing: boolean;
+  refreshDbData: () => Promise<void>;
 
   // Role Passwords & Security
   rolePasswords: RolePasswords;
@@ -239,12 +271,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : initialAuditLogs;
   });
 
-  const [facilities] = useState<AirportFacility[]>(initialFacilities);
+  const [facilities, setFacilities] = useState<AirportFacility[]>(initialFacilities);
 
   const [settings, setSettings] = useState<OrganizationSettings>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_settings`);
     return saved ? JSON.parse(saved) : initialSettings;
   });
+
+  // DB Status state
+  const [dbStatus, setDbStatus] = useState<DbStatusInfo>({
+    isConnected: false,
+    dbName: 'paa_sentinel',
+    host: '127.0.0.1',
+    port: 27017,
+    uriUsed: 'mongodb://127.0.0.1:27017/paa_sentinel',
+  });
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [departments, setDepartments] = useState<Department[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_departments`);
@@ -326,6 +368,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_is_logged_in`, JSON.stringify(isLoggedIn));
   }, [isLoggedIn]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -352,7 +395,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_role_passwords`, JSON.stringify(rolePasswords));
   }, [rolePasswords]);
 
-  // Sync to localStorage
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_assets`, JSON.stringify(assets));
   }, [assets]);
@@ -383,7 +425,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_settings`, JSON.stringify(settings));
-    // Apply theme class to document elem
     if (settings.theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -391,9 +432,51 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [settings]);
 
+  // Connect & Sync from MongoDB Backend API
+  const refreshDbData = useCallback(async () => {
+    try {
+      setIsSyncing(true);
+      const res = await fetch('/api/db/status');
+      if (res.ok) {
+        const statusData = await res.json();
+        setDbStatus(statusData);
+
+        if (statusData.isConnected) {
+          const syncRes = await fetch('/api/sync/all');
+          if (syncRes.ok) {
+            const syncJson = await syncRes.json();
+            if (syncJson.success && syncJson.data) {
+              const { data } = syncJson;
+              if (data.assets && data.assets.length > 0) setAssets(deduplicateItems(data.assets, (a: AssetItem) => a.id));
+              if (data.tickets && data.tickets.length > 0) setTickets(deduplicateItems(data.tickets, (t: IssueTicket) => t.ticketNumber));
+              if (data.maintenanceRecords && data.maintenanceRecords.length > 0) setMaintenanceRecords(deduplicateItems(data.maintenanceRecords, (m: MaintenanceRecord) => m.id));
+              if (data.logisticsReceivingRecords && data.logisticsReceivingRecords.length > 0) setLogisticsReceivingRecords(deduplicateItems(data.logisticsReceivingRecords, (l: LogisticsReceivingRecord) => l.id));
+              if (data.tonerIssueRecords && data.tonerIssueRecords.length > 0) setTonerIssueRecords(deduplicateItems(data.tonerIssueRecords, (tr: TonerIssueRecord) => tr.id));
+              if (data.gatePassRecords && data.gatePassRecords.length > 0) setGatePassRecords(deduplicateItems(data.gatePassRecords, (gp: GatePassRecord) => gp.id));
+              if (data.auditLogs && data.auditLogs.length > 0) setAuditLogs(data.auditLogs);
+              if (data.facilities && data.facilities.length > 0) setFacilities(data.facilities);
+              if (data.settings && data.settings.orgName) setSettings(data.settings);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Backend not running or in offline SPA mode - fallback to localStorage gracefully
+      console.log('MongoDB server sync note:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDbData();
+    const interval = setInterval(refreshDbData, 30000); // periodically refresh status
+    return () => clearInterval(interval);
+  }, [refreshDbData]);
+
   const addAuditLog = (action: string, details: string, assetId?: string, type: AuditLog['type'] = 'info') => {
     const newLog: AuditLog = {
-      id: `LOG-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       timestamp: new Date().toLocaleString('en-US', { timeZoneName: 'short' }),
       actor: `${userRole} User`,
       action,
@@ -402,6 +485,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       type,
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+
+    // Async sync to Mongo
+    fetch('/api/audit-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLog),
+    }).catch(() => {});
   };
 
   const toggleTheme = () => {
@@ -448,46 +538,72 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setAssets((prev) => [newAsset, ...prev]);
-    addAuditLog('Asset Registered', `New asset ${newAsset.id} (${newAsset.name}) registered in ${newAsset.department}`, newAsset.id, 'success');
+
+    // Persist to MongoDB API
+    fetch('/api/assets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newAsset),
+    }).catch(() => {});
+
+    addAuditLog('Asset Created', `Asset ${newAsset.id} (${newAsset.name}) registered in ${newAsset.department}`, newAsset.id, 'success');
     return newAsset;
   };
 
   const updateAsset = (id: string, assetData: Partial<AssetItem>) => {
     setAssets((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              ...assetData,
-              updatedAt: new Date().toISOString(),
-            }
-          : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          const updated = {
+            ...item,
+            ...assetData,
+            updatedAt: new Date().toISOString(),
+          };
+          return updated;
+        }
+        return item;
+      })
     );
-    addAuditLog('Asset Updated', `Asset details updated for ${id}`, id, 'info');
+
+    // Sync to Mongo
+    fetch(`/api/assets/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(assetData),
+    }).catch(() => {});
+
+    addAuditLog('Asset Updated', `Asset ${id} details updated in system`, id, 'info');
   };
 
   const softRemoveAsset = (id: string, reason: RemovalReason, removedBy: string, remarks: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const removalDetails = {
+      reason,
+      removedBy,
+      date: new Date().toISOString().split('T')[0],
+      remarks,
+    };
+
     setAssets((prev) =>
       prev.map((item) =>
         item.id === id
           ? {
               ...item,
               isRemoved: true,
-              status: reason === 'Scrap' ? 'Scrap' : reason === 'Damaged' ? 'Faulty' : 'Lost',
-              removalDetails: {
-                reason,
-                removedBy,
-                date: today,
-                remarks,
-              },
+              status: reason === 'Scrap' ? 'Scrap' : reason === 'Lost' ? 'Lost' : 'Faulty',
+              removalDetails,
               updatedAt: new Date().toISOString(),
             }
           : item
       )
     );
-    addAuditLog('Asset Soft Removed', `Asset ${id} marked as removed (${reason}). Remarks: ${remarks}`, id, 'danger');
+
+    fetch(`/api/assets/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isRemoved: true, status: reason, removalDetails }),
+    }).catch(() => {});
+
+    addAuditLog('Asset Archived/Removed', `Asset ${id} marked as removed (${reason}) by ${removedBy}. Reason: ${remarks}`, id, 'warning');
   };
 
   const restoreAsset = (id: string) => {
@@ -504,11 +620,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           : item
       )
     );
+
+    fetch(`/api/assets/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isRemoved: false, status: 'Spare', removalDetails: null }),
+    }).catch(() => {});
+
     addAuditLog('Asset Restored', `Asset ${id} restored from archive to active/spare inventory`, id, 'success');
   };
 
   const deletePermanently = (id: string) => {
     setAssets((prev) => prev.filter((item) => item.id !== id));
+    fetch(`/api/assets/${id}`, { method: 'DELETE' }).catch(() => {});
     addAuditLog('Asset Permanently Deleted', `Asset ${id} permanently removed from database`, id, 'danger');
   };
 
@@ -546,6 +670,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       id: `MNT-2026-${num < 10 ? '00' + num : num < 100 ? '0' + num : num}`,
     };
     setMaintenanceRecords((prev) => [newRecord, ...prev]);
+
+    fetch('/api/maintenance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRecord),
+    }).catch(() => {});
+
     addAuditLog('Maintenance Logged', `Maintenance service logged for ${recordData.deviceName} (Cost: PKR ${recordData.cost.toLocaleString()})`, recordData.assetId, 'info');
   };
 
@@ -576,6 +707,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
     }
 
+    fetch('/api/toner', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newRecord, updatePrinterLevel }),
+    }).catch(() => {});
+
     addAuditLog(
       'Toner Cartridge Issued',
       `Issued ${recordData.quantity}x ${recordData.tonerModel} cartridge to ${recordData.department} Dept on ${recordData.issuedDate} (Recipient: ${recordData.recipientUser || 'Staff'}).`,
@@ -594,14 +731,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setGatePassRecords((prev) => [newRecord, ...prev]);
 
-    // Optionally update asset status to Under Repair if Returnable
     if (recordData.assetId) {
       setAssets((prev) =>
         prev.map((a) => {
           if (a.id === recordData.assetId) {
             return {
               ...a,
-              status: recordData.gatePassType.includes('Returnable') ? 'Under Repair' : 'Retired',
+              status: recordData.gatePassType.includes('Returnable') ? 'Under Repair' : 'Scrap',
               updatedAt: new Date().toISOString(),
             };
           }
@@ -609,6 +745,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         })
       );
     }
+
+    fetch('/api/gatepasses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRecord),
+    }).catch(() => {});
 
     addAuditLog(
       'Gate Pass Issued',
@@ -634,11 +776,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             securityClearedBy: securityCleared || gp.securityClearedBy,
           };
 
-          // If returned, set asset status back to Operational
           if (status === 'Returned & Repaired' && gp.assetId) {
             setAssets((assetsPrev) =>
               assetsPrev.map((a) =>
-                a.id === gp.assetId ? { ...a, status: 'In Use', updatedAt: new Date().toISOString() } : a
+                a.id === gp.assetId ? { ...a, status: 'Active', updatedAt: new Date().toISOString() } : a
               )
             );
           }
@@ -648,6 +789,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return gp;
       })
     );
+
+    fetch(`/api/gatepasses/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, actualReturnDate, securityClearedBy: securityCleared }),
+    }).catch(() => {});
 
     addAuditLog('Gate Pass Status Updated', `Gate Pass ${id} status updated to: ${status}`, undefined, 'info');
   };
@@ -713,6 +860,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       setAssets((prev) => [...newAssetsBatch, ...prev]);
+
+      fetch('/api/assets/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assets: newAssetsBatch }),
+      }).catch(() => {});
     }
 
     const finalRecord: LogisticsReceivingRecord = {
@@ -723,6 +876,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
 
     setLogisticsReceivingRecords((prev) => [finalRecord, ...prev]);
+
+    fetch('/api/logistics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalRecord),
+    }).catch(() => {});
 
     addAuditLog(
       'Logistics Item Received',
@@ -741,22 +900,31 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const bulkImportAssets = (importedAssets: AssetItem[]) => {
     setAssets((prev) => deduplicateItems([...importedAssets, ...prev], (a) => a.id));
-    addAuditLog('Bulk Import', `Imported ${importedAssets.length} assets from Excel spreadsheet`, undefined, 'success');
+    fetch('/api/assets/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assets: importedAssets }),
+    }).catch(() => {});
+    addAuditLog('Bulk Import', `Imported ${importedAssets.length} assets from Excel spreadsheet into database`, undefined, 'success');
   };
 
   const exportDatabaseJson = () => {
     const fullBackup = {
       exportTimestamp: new Date().toISOString(),
       version: '5.0',
+      database: dbStatus.isConnected ? 'MongoDB (Local Server)' : 'Local Cache',
       settings,
       assets,
       tickets,
       maintenanceRecords,
+      logisticsReceivingRecords,
+      tonerIssueRecords,
+      gatePassRecords,
       auditLogs,
     };
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(fullBackup, null, 2));
     const downloadAnchor = document.createElement('a');
-    const fileName = `PAA_Sentinel_v5_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    const fileName = `PAA_Sentinel_MongoDB_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute('download', fileName);
     document.body.appendChild(downloadAnchor);
@@ -775,8 +943,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setAssets(deduplicateItems<AssetItem>(parsed.assets, (a) => a.id));
         if (parsed.tickets) setTickets(deduplicateItems<IssueTicket>(parsed.tickets, (t) => t.ticketNumber));
         if (parsed.maintenanceRecords) setMaintenanceRecords(deduplicateItems<MaintenanceRecord>(parsed.maintenanceRecords, (m) => m.id));
+        if (parsed.logisticsReceivingRecords) setLogisticsReceivingRecords(deduplicateItems<LogisticsReceivingRecord>(parsed.logisticsReceivingRecords, (l) => l.id));
+        if (parsed.tonerIssueRecords) setTonerIssueRecords(deduplicateItems<TonerIssueRecord>(parsed.tonerIssueRecords, (t) => t.id));
+        if (parsed.gatePassRecords) setGatePassRecords(deduplicateItems<GatePassRecord>(parsed.gatePassRecords, (g) => g.id));
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
         if (parsed.settings) setSettings(parsed.settings);
+
+        // Sync to MongoDB backend
+        fetch('/api/assets/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assets: parsed.assets }),
+        }).catch(() => {});
+
         addAuditLog('Database Restored', 'System state successfully restored from JSON backup file', undefined, 'warning');
         return true;
       }
@@ -791,8 +970,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAssets(deduplicateItems(initialAssets, (a) => a.id));
     setTickets(deduplicateItems(initialTickets, (t) => t.ticketNumber));
     setMaintenanceRecords(deduplicateItems(initialMaintenanceRecords, (m) => m.id));
+    setLogisticsReceivingRecords(deduplicateItems(initialLogisticsReceivingRecords, (l) => l.id));
+    setTonerIssueRecords(deduplicateItems(initialTonerIssueRecords, (tr) => tr.id));
+    setGatePassRecords(deduplicateItems(initialGatePassRecords, (gp) => gp.id));
     setAuditLogs(initialAuditLogs);
     setSettings(initialSettings);
+
+    fetch('/api/seed/reset', { method: 'POST' }).catch(() => {});
+
     addAuditLog('System Reset', 'All inventory records reset to factory default seed dataset', undefined, 'danger');
   };
 
@@ -940,6 +1125,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addVendor,
         allCategories: categories,
         addCategory,
+        dbStatus,
+        isSyncing,
+        refreshDbData,
       }}
     >
       {children}

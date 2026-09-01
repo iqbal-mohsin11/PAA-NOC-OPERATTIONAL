@@ -58,6 +58,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
     auditLogs,
     tickets,
     assets,
+    dbStatus,
+    refreshDbData,
   } = useInventory();
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -136,6 +138,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
 
         {/* Utility Controls & Login */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* MongoDB Server Status Button */}
+          <button
+            onClick={() => setShowPCWebFileModal(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+              dbStatus.isConnected
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}
+            title={`MongoDB Server: ${dbStatus.isConnected ? 'Connected (' + dbStatus.host + ':' + dbStatus.port + '/' + dbStatus.dbName + ')' : 'Local Storage Mode (Click for PC MongoDB Server Setup)'}`}
+          >
+            <Database className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden lg:inline text-[11px]">
+              {dbStatus.isConnected ? 'MongoDB Active' : 'PC Server / DB'}
+            </span>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                dbStatus.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+              }`}
+            />
+          </button>
+
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
