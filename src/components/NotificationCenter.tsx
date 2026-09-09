@@ -24,15 +24,18 @@ import {
   ChevronDown,
   ChevronUp,
   RotateCcw,
+  BatteryCharging,
+  Zap,
 } from 'lucide-react';
 import { ReturnToSupplyBRModal } from './ReturnToSupplyBRModal';
+import { getUPSBatteryAlerts, UPSBatteryAlertItem } from '../utils/upsBatteryAlerts';
 
 interface NotificationCenterProps {
   onSelectAsset: (asset: AssetItem) => void;
   onNavigateTab: (tab: any) => void;
 }
 
-export type NotificationType = 'WARRANTY' | 'TONER' | 'MAINTENANCE';
+export type NotificationType = 'WARRANTY' | 'TONER' | 'MAINTENANCE' | 'UPS_BATTERY';
 export type SeverityLevel = 'CRITICAL' | 'WARNING' | 'INFO';
 
 export interface AlertNotificationItem {
@@ -48,24 +51,25 @@ export interface AlertNotificationItem {
   metricValue?: number; // e.g. toner percentage or days left
   rawAsset?: AssetItem;
   rawTicket?: IssueTicket;
-  actionType: 'RENEW_WARRANTY' | 'REFILL_TONER' | 'RESOLVE_TICKET' | 'VIEW_ASSET';
+  actionType: 'RENEW_WARRANTY' | 'REFILL_TONER' | 'RESOLVE_TICKET' | 'VIEW_ASSET' | 'REPLACE_UPS_BATTERY';
+  upsBatteryAlert?: UPSBatteryAlertItem;
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   onSelectAsset,
   onNavigateTab,
 }) => {
-  const { assets, tickets, updateAsset, updateTicketStatus, addAuditLog } = useInventory();
+  const { assets, tickets, updateAsset, updateTicketStatus, addAuditLog, addUPSMaintenanceRecord } = useInventory();
 
   // Active Filter state
-  const [activeTab, setActiveTab] = useState<'ALL' | 'WARRANTY' | 'TONER' | 'MAINTENANCE' | 'CRITICAL'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'WARRANTY' | 'TONER' | 'MAINTENANCE' | 'UPS_BATTERY' | 'CRITICAL'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [showDismissed, setShowDismissed] = useState(false);
 
   // Quick Action Modal States
   const [activeActionItem, setActiveActionItem] = useState<AlertNotificationItem | null>(null);
-  const [actionModalType, setActionModalType] = useState<'TONER' | 'WARRANTY' | 'TICKET' | null>(null);
+  const [actionModalType, setActionModalType] = useState<'TONER' | 'WARRANTY' | 'TICKET' | 'BATTERY' | null>(null);
   const [showReturnToSupplyModal, setShowReturnToSupplyModal] = useState(false);
 
   // Form Inputs for Modals
@@ -73,6 +77,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const [newWarrantyDate, setNewWarrantyDate] = useState('2028-12-31');
   const [ticketResolution, setTicketResolution] = useState('');
   const [ticketStatusInput, setTicketStatusInput] = useState<IssueTicket['status']>('Closed');
+
+  // UPS Battery Replacement Modal State
+  const [newBatteryChangeDate, setNewBatteryChangeDate] = useState('');
+  const [nextBatteryDueDate, setNextBatteryDueDate] = useState('');
+  const [newBatteryQty, setNewBatteryQty] = useState(3);
+  const [newBatteryBrand, setNewBatteryBrand] = useState('12V 7.2Ah VRLA AGM');
+  const [batteryEngineer, setBatteryEngineer] = useState('Engr. Farid / IT NOC');
+  const [batteryRemarks, setBatteryRemarks] = useState('');
 
   const activeAssets = assets.filter((a) => !a.isRemoved);
   const now = new Date();
@@ -153,8 +165,32 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     };
   });
 
+  // 4. Automated UPS Batteries Change Date Alerts (Due within next 30 days or Overdue)
+  const upsBatteryItems = getUPSBatteryAlerts(activeAssets, now, 30);
+  const upsBatteryAlerts: AlertNotificationItem[] = upsBatteryItems.map((alert) => {
+    return {
+      id: alert.id,
+      type: 'UPS_BATTERY',
+      severity: alert.severity,
+      title: `${alert.tagNo} (${alert.modelNo}) - Battery Change ${alert.isOverdue ? 'OVERDUE' : 'Due in ' + alert.diffDays + ' Days'}`,
+      subtitle: `Room: ${alert.roomNo}, ${alert.locationDetails} • Rating: ${alert.capacityKvaKw} • Cell Bank: ${alert.noOfBatteries}x ${alert.batteryType}`,
+      department: alert.asset.department || 'IT Infrastructure',
+      assetId: alert.asset.id,
+      dateOrSpec: `Batteries Change Date: ${alert.batteryChangeDate} (${alert.urgencyLabel})`,
+      metricValue: alert.diffDays,
+      rawAsset: alert.asset,
+      actionType: 'REPLACE_UPS_BATTERY',
+      upsBatteryAlert: alert,
+    };
+  });
+
   // Combine All Notifications
-  const allNotifications = [...warrantyAlerts, ...tonerAlerts, ...maintenanceAlerts];
+  const allNotifications = [
+    ...upsBatteryAlerts,
+    ...warrantyAlerts,
+    ...tonerAlerts,
+    ...maintenanceAlerts,
+  ];
 
   // Dismissed Filter
   const visibleNotifications = allNotifications.filter((item) =>
@@ -166,6 +202,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     if (activeTab === 'WARRANTY' && item.type !== 'WARRANTY') return false;
     if (activeTab === 'TONER' && item.type !== 'TONER') return false;
     if (activeTab === 'MAINTENANCE' && item.type !== 'MAINTENANCE') return false;
+    if (activeTab === 'UPS_BATTERY' && item.type !== 'UPS_BATTERY') return false;
     if (activeTab === 'CRITICAL' && item.severity !== 'CRITICAL') return false;
 
     if (searchTerm.trim()) {
@@ -210,6 +247,19 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       setTicketStatusInput('Closed');
       setTicketResolution('Issue resolved by engineer on site.');
       setActionModalType('TICKET');
+    } else if (item.type === 'UPS_BATTERY') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      setNewBatteryChangeDate(todayStr);
+
+      const nextDate = new Date();
+      nextDate.setFullYear(nextDate.getFullYear() + 2);
+      setNextBatteryDueDate(nextDate.toISOString().split('T')[0]);
+
+      setNewBatteryQty(item.upsBatteryAlert?.noOfBatteries || item.rawAsset?.upsSpecs?.noOfBatteries || 3);
+      setNewBatteryBrand(item.upsBatteryAlert?.batteryType || item.rawAsset?.upsSpecs?.batteryType || '12V 7.2Ah VRLA AGM');
+      setBatteryEngineer('Engr. Farid / IT NOC');
+      setBatteryRemarks('Replaced full battery bank; 100% capacity and autonomy restored.');
+      setActionModalType('BATTERY');
     }
   };
 
@@ -291,10 +341,67 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     setActiveActionItem(null);
   };
 
+  // Submit UPS Battery Replacement Action
+  const handleConfirmBatteryReplacement = () => {
+    if (!activeActionItem?.rawAsset) return;
+    const asset = activeActionItem.rawAsset;
+
+    const changeDate = newBatteryChangeDate || new Date().toISOString().split('T')[0];
+    const dueDate = nextBatteryDueDate || (() => {
+      const d = new Date(changeDate);
+      d.setFullYear(d.getFullYear() + 2);
+      return d.toISOString().split('T')[0];
+    })();
+
+    // 1. Update Asset Specs
+    updateAsset(asset.id, {
+      upsSpecs: {
+        ...asset.upsSpecs,
+        lastBatteryChangeDate: changeDate,
+        nextBatteryChangeDate: dueDate,
+        noOfBatteries: newBatteryQty,
+        batteryType: newBatteryBrand,
+        backupStatus: 'OK',
+        backupTime: '10 MIN/OK',
+        batteryHealthPercent: 100,
+      },
+      lastMaintenanceDate: changeDate,
+      status: 'Active',
+    });
+
+    // 2. Add UPS Maintenance Record for permanent history
+    addUPSMaintenanceRecord(
+      {
+        assetId: asset.id,
+        upsName: asset.name,
+        modelNo: asset.upsSpecs?.modelNo || asset.model,
+        roomNo: asset.upsSpecs?.roomNo || asset.location?.room || '4102',
+        engineer: batteryEngineer,
+        actionTaken: `Full battery replacement: Installed ${newBatteryQty}x ${newBatteryBrand}. New change date: ${changeDate}. Next scheduled change: ${dueDate}. ${batteryRemarks}`,
+        status: 'Operational',
+        voltage: asset.upsSpecs?.capacityKvaKw || '1KVA / 0.7KW',
+      },
+      true
+    );
+
+    // 3. System Audit Log
+    addAuditLog(
+      'UPS Battery Bank Replaced',
+      `Batteries replaced for ${asset.assetTag || asset.name} (${asset.model}). Next batteries change date set to ${dueDate}. Performed by ${batteryEngineer}.`,
+      asset.id,
+      'success'
+    );
+
+    handleDismissAlert(activeActionItem.id);
+    setActionModalType(null);
+    setActiveActionItem(null);
+  };
+
   const countCritical = allNotifications.filter((n) => n.severity === 'CRITICAL' && !dismissedIds.includes(n.id)).length;
   const countWarranty = warrantyAlerts.filter((n) => !dismissedIds.includes(n.id)).length;
   const countToner = tonerAlerts.filter((n) => !dismissedIds.includes(n.id)).length;
   const countMaintenance = maintenanceAlerts.filter((n) => !dismissedIds.includes(n.id)).length;
+  const countBattery = upsBatteryAlerts.filter((n) => !dismissedIds.includes(n.id)).length;
   const activeCount = allNotifications.filter((n) => !dismissedIds.includes(n.id)).length;
 
   return (
@@ -360,7 +467,23 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       </div>
 
       {/* Metric Counters Bar */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <button
+          onClick={() => setActiveTab('UPS_BATTERY')}
+          className={`flex items-center justify-between rounded-xl border p-3 transition text-left ${
+            activeTab === 'UPS_BATTERY'
+              ? 'border-amber-500 bg-amber-500/10 dark:bg-amber-500/20 shadow-xs'
+              : 'border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/40'
+          }`}
+        >
+          <div>
+            <span className="block text-[10px] font-bold uppercase text-slate-400">UPS Batteries Due</span>
+            <span className="text-lg font-black text-slate-900 dark:text-white">{countBattery}</span>
+            <span className="block text-[9px] font-medium text-amber-600 dark:text-amber-400">Next 30 Days</span>
+          </div>
+          <BatteryCharging className="h-5 w-5 text-amber-500" />
+        </button>
+
         <button
           onClick={() => setActiveTab('WARRANTY')}
           className={`flex items-center justify-between rounded-xl border p-3 transition text-left ${
@@ -372,6 +495,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <div>
             <span className="block text-[10px] font-bold uppercase text-slate-400">Expiring Warranties</span>
             <span className="text-lg font-black text-slate-900 dark:text-white">{countWarranty}</span>
+            <span className="block text-[9px] font-medium text-slate-400">Within 90 Days</span>
           </div>
           <Clock className="h-5 w-5 text-amber-500" />
         </button>
@@ -387,6 +511,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <div>
             <span className="block text-[10px] font-bold uppercase text-slate-400">Low Toner Printers</span>
             <span className="text-lg font-black text-slate-900 dark:text-white">{countToner}</span>
+            <span className="block text-[9px] font-medium text-slate-400">Level &le; 25%</span>
           </div>
           <Droplets className="h-5 w-5 text-cyan-500" />
         </button>
@@ -402,6 +527,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <div>
             <span className="block text-[10px] font-bold uppercase text-slate-400">Pending Maintenance</span>
             <span className="text-lg font-black text-slate-900 dark:text-white">{countMaintenance}</span>
+            <span className="block text-[9px] font-medium text-slate-400">Open Tickets</span>
           </div>
           <Wrench className="h-5 w-5 text-rose-500" />
         </button>
@@ -417,6 +543,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           <div>
             <span className="block text-[10px] font-bold uppercase text-slate-400">Critical Priority</span>
             <span className="text-lg font-black text-slate-900 dark:text-white">{countCritical}</span>
+            <span className="block text-[9px] font-medium text-rose-500">Urgent Action</span>
           </div>
           <ShieldAlert className="h-5 w-5 text-rose-600" />
         </button>
@@ -427,6 +554,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         <div className="flex flex-wrap items-center gap-1">
           {[
             { id: 'ALL', label: `All Alerts (${visibleNotifications.length})` },
+            { id: 'UPS_BATTERY', label: `UPS Batteries (${countBattery})` },
             { id: 'WARRANTY', label: `Warranty (${countWarranty})` },
             { id: 'TONER', label: `Toner Low (${countToner})` },
             { id: 'MAINTENANCE', label: `Maintenance (${countMaintenance})` },
@@ -485,14 +613,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <div className="flex items-start gap-3 overflow-hidden">
                 <div
                   className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl font-bold text-xs ${
-                    item.type === 'WARRANTY'
+                    item.type === 'UPS_BATTERY'
+                      ? 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'
+                      : item.type === 'WARRANTY'
                       ? 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400'
                       : item.type === 'TONER'
                       ? 'bg-cyan-500/10 text-cyan-600 dark:bg-cyan-500/20 dark:text-cyan-400'
                       : 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400'
                   }`}
                 >
-                  {item.type === 'WARRANTY' ? (
+                  {item.type === 'UPS_BATTERY' ? (
+                    <BatteryCharging className="h-5 w-5" />
+                  ) : item.type === 'WARRANTY' ? (
                     <Clock className="h-5 w-5" />
                   ) : item.type === 'TONER' ? (
                     <Droplets className="h-5 w-5" />
@@ -551,28 +683,41 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
                 {item.rawAsset && (
                   <button
-                    onClick={() => onSelectAsset(item.rawAsset!)}
+                    onClick={() => {
+                      if (item.type === 'UPS_BATTERY') {
+                        onNavigateTab('ups');
+                      }
+                      onSelectAsset(item.rawAsset!);
+                    }}
                     className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                    title="View Asset Details"
+                    title={item.type === 'UPS_BATTERY' ? 'View UPS Details in Fleet' : 'View Asset Details'}
                   >
                     <Eye className="h-3 w-3 text-emerald-500" />
-                    <span>View</span>
+                    <span>{item.type === 'UPS_BATTERY' ? 'View UPS' : 'View'}</span>
                   </button>
                 )}
 
                 <button
                   onClick={() => handleOpenActionModal(item)}
                   className={`flex items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-bold text-white shadow-sm transition ${
-                    item.type === 'TONER'
+                    item.type === 'UPS_BATTERY'
+                      ? 'bg-amber-600 hover:bg-amber-500'
+                      : item.type === 'TONER'
                       ? 'bg-cyan-600 hover:bg-cyan-500'
                       : item.type === 'WARRANTY'
                       ? 'bg-amber-600 hover:bg-amber-500'
                       : 'bg-rose-600 hover:bg-rose-500'
                   }`}
                 >
-                  <RefreshCw className="h-3 w-3" />
+                  {item.type === 'UPS_BATTERY' ? (
+                    <BatteryCharging className="h-3.5 w-3.5" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
                   <span>
-                    {item.type === 'TONER'
+                    {item.type === 'UPS_BATTERY'
+                      ? 'Record Battery Change'
+                      : item.type === 'TONER'
                       ? 'Refill Toner'
                       : item.type === 'WARRANTY'
                       ? 'Extend Warranty'
@@ -603,16 +748,18 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         )}
       </div>
 
-      {/* Quick Action Modal for Refill Toner, Renew Warranty, or Resolve Ticket */}
+      {/* Quick Action Modal for Refill Toner, Renew Warranty, Resolve Ticket, or Replace UPS Battery */}
       {actionModalType && activeActionItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div className="flex items-center gap-2">
+                {actionModalType === 'BATTERY' && <BatteryCharging className="h-5 w-5 text-amber-500" />}
                 {actionModalType === 'TONER' && <Droplets className="h-5 w-5 text-cyan-500" />}
                 {actionModalType === 'WARRANTY' && <Clock className="h-5 w-5 text-amber-500" />}
                 {actionModalType === 'TICKET' && <Wrench className="h-5 w-5 text-rose-500" />}
                 <h3 className="font-bold text-slate-900 text-sm dark:text-white">
+                  {actionModalType === 'BATTERY' && 'Record UPS Battery Replacement'}
                   {actionModalType === 'TONER' && 'Replenish Printer Toner Level'}
                   {actionModalType === 'WARRANTY' && 'Renew / Extend Asset Warranty'}
                   {actionModalType === 'TICKET' && 'Update Support Ticket Status'}
@@ -631,6 +778,99 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 <p className="font-bold text-slate-800 dark:text-slate-200">{activeActionItem.title}</p>
                 <p className="text-slate-500 dark:text-slate-400 mt-0.5">{activeActionItem.subtitle}</p>
               </div>
+
+              {/* UPS Battery Replacement Form */}
+              {actionModalType === 'BATTERY' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Replacement Date (Done)
+                      </label>
+                      <input
+                        type="date"
+                        value={newBatteryChangeDate}
+                        onChange={(e) => {
+                          setNewBatteryChangeDate(e.target.value);
+                          if (e.target.value) {
+                            const d = new Date(e.target.value);
+                            d.setFullYear(d.getFullYear() + 2);
+                            setNextBatteryDueDate(d.toISOString().split('T')[0]);
+                          }
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Next Scheduled Due Date
+                      </label>
+                      <input
+                        type="date"
+                        value={nextBatteryDueDate}
+                        onChange={(e) => setNextBatteryDueDate(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Batteries Installed (Qty)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="32"
+                        value={newBatteryQty}
+                        onChange={(e) => setNewBatteryQty(Number(e.target.value))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Battery Type / Rating
+                      </label>
+                      <input
+                        type="text"
+                        value={newBatteryBrand}
+                        onChange={(e) => setNewBatteryBrand(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Lead Service Engineer / Tech
+                    </label>
+                    <input
+                      type="text"
+                      value={batteryEngineer}
+                      onChange={(e) => setBatteryEngineer(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Maintenance Remarks & Work Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={batteryRemarks}
+                      onChange={(e) => setBatteryRemarks(e.target.value)}
+                      placeholder="Load test results, serial numbers of new batteries..."
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs text-slate-800 outline-none focus:border-amber-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    This will update the unit's batteries change dates, restore autonomy status to 100% OK, record an official maintenance log entry, and clear this notification.
+                  </p>
+                </div>
+              )}
 
               {/* Toner Refill Form */}
               {actionModalType === 'TONER' && (
@@ -724,7 +964,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               <button
                 type="button"
                 onClick={
-                  actionModalType === 'TONER'
+                  actionModalType === 'BATTERY'
+                    ? handleConfirmBatteryReplacement
+                    : actionModalType === 'TONER'
                     ? handleConfirmTonerRefill
                     : actionModalType === 'WARRANTY'
                     ? handleConfirmWarrantyRenew

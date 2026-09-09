@@ -8,6 +8,7 @@ import { AssetFormModal } from './components/AssetFormModal';
 import { AssetDetailModal } from './components/AssetDetailModal';
 import { PrintersScannersView } from './components/PrintersScannersView';
 import { NetworkInfrastructureView } from './components/NetworkInfrastructureView';
+import { UPSView } from './components/UPSView';
 import { IssueManagementView } from './components/IssueManagementView';
 import { MaintenanceView } from './components/MaintenanceView';
 import { RemovedItemsView, SoftRemoveModal } from './components/RemovedItemsView';
@@ -135,6 +136,16 @@ const AppContent: React.FC = () => {
               />
             )}
 
+            {activeTab === 'ups' && (
+              <UPSView
+                onSelectAsset={handleSelectAsset}
+                onOpenGatePass={(asset) => {
+                  setGatePassAsset(asset);
+                  setShowGatePassModal(true);
+                }}
+              />
+            )}
+
             {activeTab === 'issues' && <IssueManagementView initialAssetForTicket={ticketTargetAsset} />}
 
             {activeTab === 'maintenance' && (
@@ -143,6 +154,7 @@ const AppContent: React.FC = () => {
                   setGatePassAsset(asset || null);
                   setShowGatePassModal(true);
                 }}
+                onSelectAsset={handleSelectAsset}
               />
             )}
 

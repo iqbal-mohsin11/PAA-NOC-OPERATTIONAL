@@ -49,9 +49,13 @@ import {
   PackageCheck,
   FileText,
   ChevronDown,
+  ChevronRight,
   Laptop,
   Database,
   RotateCcw,
+  Cable,
+  Network,
+  BatteryCharging,
 } from 'lucide-react';
 import { AssetItem, DeviceCategory } from '../types/inventory';
 import { NotificationCenter } from './NotificationCenter';
@@ -61,6 +65,8 @@ import { LogisticsReceivingModal } from './LogisticsReceivingModal';
 import { PCWebFileModal } from './PCWebFileModal';
 import { ReturnToSupplyBRModal } from './ReturnToSupplyBRModal';
 import { RecentActivityPanel } from './RecentActivityPanel';
+import { UPSBatteryReplacementModal } from './UPSBatteryReplacementModal';
+import { UPSBackupListModal } from './UPSBackupListModal';
 
 interface DashboardProps {
   onNavigateTab?: (tab: any) => void;
@@ -89,6 +95,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [showPCWebFileModal, setShowPCWebFileModal] = useState<boolean>(false);
   const [showReturnToSupplyModal, setShowReturnToSupplyModal] = useState<boolean>(false);
   const [showFormsMenu, setShowFormsMenu] = useState<boolean>(false);
+  const [showBatteryReplacementModal, setShowBatteryReplacementModal] = useState<boolean>(false);
+  const [showBackupListModal, setShowBackupListModal] = useState<boolean>(false);
 
   const handleNav = (tab: string) => {
     if (onNavigateTab) onNavigateTab(tab);
@@ -102,6 +110,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const spareCount = activeAssets.filter((a) => a.status === 'Spare').length;
   const repairCount = activeAssets.filter((a) => a.status === 'Under Repair').length;
   const faultyCount = activeAssets.filter((a) => a.status === 'Faulty').length;
+  const upsCount = activeAssets.filter((a) => a.category === 'UPS' || a.upsSpecs !== undefined).length;
 
   const onlineCount = activeAssets.filter((a) => a.pingStatus === 'Online').length;
   const warningCount = activeAssets.filter((a) => a.pingStatus === 'Warning').length;
@@ -135,6 +144,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { name: 'Servers', categoryKey: 'Server', icon: Server },
     { name: 'UPS Units', categoryKey: 'UPS', icon: Zap },
     { name: 'IP Phones', categoryKey: 'IP Phone', icon: Radio },
+    { name: 'Fiber Patch Cords', categoryKey: 'Fiber Patch Cord', icon: Network },
+    { name: 'UTP Patch Cords & Cables', categoryKey: 'UTP Patch Cord / Network Cable', icon: Cable },
   ];
 
   const categoryMatrixData = categoriesList.map((item) => {
@@ -277,6 +288,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </button>
 
+          {/* UPS & kVA Power Fleet Module Button */}
+          <button
+            onClick={() => handleNav('ups')}
+            className="flex items-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/20 px-3.5 py-2 text-xs font-extrabold text-amber-300 transition hover:bg-amber-500/30 shadow-md shrink-0"
+            title="Open UPS & kVA Power Infrastructure Fleet (AIIAP Structured LAN Details)"
+          >
+            <BatteryCharging className="h-4 w-4 text-amber-400" />
+            <span>UPS & kVA Power Fleet</span>
+            {upsCount > 0 && (
+              <span className="rounded-full bg-amber-600 px-1.5 py-0.2 text-[10px] font-extrabold text-white">
+                {upsCount}
+              </span>
+            )}
+          </button>
+
           {/* Add Asset */}
           <button
             onClick={onOpenAddModal}
@@ -313,7 +339,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               setShowProcurementModal(true);
             }}
             className="flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-3.5 py-2 text-xs font-bold text-indigo-300 transition hover:bg-indigo-500/30 shadow-sm shrink-0"
-            title="New Item Purchasing: RAM, SSD, Keyboard/Mouse, LED, PC, Printer, Fiber Cables, Power Cables, USB Cables, IT Lab Tools"
+            title="New Item Purchasing: Fiber Patch Cord, UTP Patch Cord / Network Cable, RAM, SSD, Keyboard/Mouse, LED, PC, Printer, Cables, Tools"
           >
             <ShoppingCart className="h-4 w-4 text-indigo-400" />
             <span>New Item Purchasing</span>
@@ -434,6 +460,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="text-[10px] font-mono font-bold text-purple-400">
                       CAAF-005 [Supply Inward Voucher]
+                    </div>
+                  </div>
+                </button>
+
+                {/* UPS Battery Replacement Form (Image 1) */}
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setShowBatteryReplacementModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-amber-950/60 transition group border-t border-slate-800 mt-1 pt-2"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-900 text-amber-300">
+                    <BatteryCharging className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-amber-400">
+                      UPS Battery Replacement Form
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-amber-400">
+                      PAA/CAA Replacement at Different Locations
+                    </div>
+                  </div>
+                </button>
+
+                {/* UPS Backup List of IT Equipment (Image 2) */}
+                <button
+                  onClick={() => {
+                    setShowFormsMenu(false);
+                    setShowBackupListModal(true);
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-lg p-2.5 text-left hover:bg-blue-950/60 transition group"
+                >
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-900 text-blue-300">
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200 group-hover:text-blue-400">
+                      UPS Backup List of IT Equipment
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-blue-400">
+                      Official 22-Point Inspection & Sign-off Sheet
                     </div>
                   </div>
                 </button>
@@ -1065,10 +1133,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-              <div>
+              <div
+                onClick={() => handleNav('ups')}
+                className="cursor-pointer group hover:bg-slate-800/60 p-1.5 -mx-1.5 rounded-lg transition"
+                title="Open UPS & kVA Infrastructure View"
+              >
                 <div className="flex justify-between text-[11px] font-semibold text-slate-300 mb-1">
-                  <span>UPS Emergency Battery Health</span>
-                  <span className="text-emerald-400 font-mono">100% Fully Charged</span>
+                  <span className="group-hover:text-amber-300 flex items-center gap-1">
+                    <span>UPS Emergency Battery Health (AIIAP Fleet)</span>
+                    <ChevronRight className="h-3 w-3 opacity-60" />
+                  </span>
+                  <span className="text-emerald-400 font-mono">100% Online</span>
                 </div>
                 <div className="h-2 w-full rounded-full bg-slate-800">
                   <div className="h-2 rounded-full bg-emerald-400" style={{ width: '100%' }}></div>
@@ -1291,6 +1366,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
         isOpen={showReturnToSupplyModal}
         onClose={() => setShowReturnToSupplyModal(false)}
       />
+
+      {/* UPS Battery Replacement Form Modal (Image 1) */}
+      {showBatteryReplacementModal && (
+        <UPSBatteryReplacementModal
+          onClose={() => setShowBatteryReplacementModal(false)}
+        />
+      )}
+
+      {/* UPS Backup List of IT Equipment Modal (Image 2) */}
+      {showBackupListModal && (
+        <UPSBackupListModal
+          onClose={() => setShowBackupListModal(false)}
+        />
+      )}
     </div>
   );
 };

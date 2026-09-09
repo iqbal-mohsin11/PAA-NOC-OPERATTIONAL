@@ -51,6 +51,7 @@ const AssetSchema = new Schema(
     printerSpecs: { type: Schema.Types.Mixed },
     scannerSpecs: { type: Schema.Types.Mixed },
     networkSpecs: { type: Schema.Types.Mixed },
+    upsSpecs: { type: Schema.Types.Mixed },
     pingStatus: { type: String, default: 'Online' },
     uptime: { type: String, default: '99.9%' },
     lastMaintenanceDate: { type: String },
@@ -211,6 +212,35 @@ const SettingsSchema = new Schema(
   { timestamps: true, strict: false }
 );
 
+// 10. UPS Maintenance & Battery Change Record Schema
+const UPSMaintenanceSchema = new Schema(
+  {
+    id: { type: String, required: true, unique: true, index: true },
+    assetId: { type: String, required: true, index: true },
+    upsName: { type: String, required: true },
+    modelNo: { type: String, required: true },
+    serialNumber: { type: String, required: true },
+    voltage: { type: String, default: '' },
+    roomNo: { type: String, default: '' },
+    location: { type: String, default: '' },
+    maintenanceDate: { type: String, required: true },
+    batteryChangeDate: { type: String, required: true },
+    nextBatteryChangeDate: { type: String },
+    backupTime: { type: String, default: '' },
+    noOfBatteries: { type: Number, default: 1 },
+    batteryBrandType: { type: String, default: '' },
+    batteryCondition: { type: String, default: 'Good (85%)' },
+    maintenanceType: { type: String, default: 'Routine Battery Test & Inspection' },
+    engineer: { type: String, required: true },
+    loadPercentage: { type: Number, default: 50 },
+    cost: { type: Number, default: 0 },
+    description: { type: String, default: '' },
+    remarks: { type: String, default: '' },
+    createdAt: { type: String, default: () => new Date().toISOString() },
+  },
+  { timestamps: true, strict: false }
+);
+
 export const AssetModel: Model<any> = mongoose.models.Asset || mongoose.model('Asset', AssetSchema);
 export const TicketModel: Model<any> = mongoose.models.Ticket || mongoose.model('Ticket', TicketSchema);
 export const MaintenanceModel: Model<any> = mongoose.models.Maintenance || mongoose.model('Maintenance', MaintenanceSchema);
@@ -220,3 +250,4 @@ export const GatePassModel: Model<any> = mongoose.models.GatePass || mongoose.mo
 export const AuditLogModel: Model<any> = mongoose.models.AuditLog || mongoose.model('AuditLog', AuditLogSchema);
 export const FacilityModel: Model<any> = mongoose.models.Facility || mongoose.model('Facility', FacilitySchema);
 export const SettingsModel: Model<any> = mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
+export const UPSMaintenanceModel: Model<any> = mongoose.models.UPSMaintenance || mongoose.model('UPSMaintenance', UPSMaintenanceSchema);

@@ -15,11 +15,13 @@ import {
   Building2,
   RefreshCw,
   Bell,
+  BatteryCharging,
   LogOut,
   LogIn,
   User,
 } from 'lucide-react';
 import { useInventory } from '../context/InventoryContext';
+import { getUPSBatteryAlerts } from '../utils/upsBatteryAlerts';
 
 export type ActiveTab =
   | 'dashboard'
@@ -27,6 +29,7 @@ export type ActiveTab =
   | 'inventory'
   | 'printers'
   | 'network'
+  | 'ups'
   | 'issues'
   | 'maintenance'
   | 'gatepass'
@@ -50,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const networkCount = activeAssets.filter((a) =>
     ['Network Switch', 'Core Switch', 'Distribution Switch', 'Access Switch', 'Router', 'Firewall', 'Access Point', 'Server'].includes(a.category)
   ).length;
+  const upsCount = activeAssets.filter((a) => a.category === 'UPS' || a.upsSpecs !== undefined).length;
   const openTicketsCount = tickets.filter((t) => t.status !== 'Closed').length;
   const activeGatePassesCount = gatePassRecords.filter((gp) => gp.status === 'Out for Market Repair').length;
   const removedCount = assets.filter((a) => a.isRemoved).length;
@@ -59,7 +63,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   const expiringWarrantyCount = activeAssets.filter((a) => a.warrantyExpiry && new Date(a.warrantyExpiry) <= ninetyDays).length;
   const lowTonerCount = activeAssets.filter((a) => a.category === 'Printer' && a.printerSpecs?.tonerLevel !== undefined && a.printerSpecs.tonerLevel <= 25).length;
-  const totalNocAlertsCount = expiringWarrantyCount + lowTonerCount + openTicketsCount;
+  const upsBatteryAlerts = getUPSBatteryAlerts(activeAssets, now, 30);
+  const upsBatteryDueCount = upsBatteryAlerts.length;
+  const totalNocAlertsCount = expiringWarrantyCount + lowTonerCount + openTicketsCount + upsBatteryDueCount;
 
   const navItems = [
     {
@@ -92,6 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'Network & Infrastructure',
       icon: Network,
       badge: networkCount,
+    },
+    {
+      id: 'ups' as ActiveTab,
+      label: 'UPS & kVA Infrastructure',
+      icon: BatteryCharging,
+      badge: upsBatteryDueCount > 0 ? `${upsCount} (${upsBatteryDueCount} due)` : upsCount > 0 ? upsCount : null,
+      badgeColor: upsBatteryDueCount > 0 ? 'bg-amber-600 text-white font-extrabold' : 'bg-amber-600 text-white',
     },
     {
       id: 'issues' as ActiveTab,

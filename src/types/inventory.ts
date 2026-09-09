@@ -50,6 +50,9 @@ export type DeviceCategory =
   | 'IP Phone'
   | 'Monitor'
   | 'NAS Storage'
+  | 'Fiber Patch Cord'
+  | 'UTP Patch Cord / Network Cable'
+  | 'Network Cable'
   | 'Other'
   | (string & {});
 
@@ -105,6 +108,39 @@ export interface NetworkDeviceSpecs {
   rackNumber?: string;
 }
 
+export interface UPSSpecs {
+  modelNo: string; // e.g. 'EATON DX 1000H', 'EATON 3000H', 'EATON DX 3000H'
+  capacityKvaKw?: string; // e.g. '1KVA / 0.7KW', '3KVA / 2.1KW', '5KVA / 4.5KW'
+  kvaRating?: string; // e.g. '1KVA', '2KVA', '3KVA', '5KVA'
+  kwRating?: string; // e.g. '0.7KW', '1.4KW', '2.1KW', '4.5KW'
+  crnNo?: string; // CRN No from AIIAP inventory, e.g. '2214'
+  srNo?: string; // Serial row number e.g. '01', '02'
+  tagNo?: string; // e.g. 'UPS-01', 'UPS-02'
+  voltage?: string; // e.g. '1KVA / 0.7KW', '230V AC (Input: 220V/230V, Output: 230V ±1%, DC Bus: 36V DC)'
+  inputVoltage?: string; // e.g. '220V / 230V AC (160V-290V)'
+  outputVoltage?: string; // e.g. '230V AC ± 1% Pure Sine Wave'
+  batteryBankVoltage?: string; // e.g. '36V DC' for 1000H (3x12V) or '96V DC' for 3000H (8x12V)
+  roomNo?: string; // e.g. '4102', 'Data Center', 'IT STORE', 'Cargo', 'Radar'
+  locationDetails?: string; // Building, Floor, Rack / Location description (e.g. 'Level 4')
+  backupTime?: string; // e.g. '10 MIN/OK', 'NO BACKUP', '25 Minutes'
+  backupStatus?: 'OK' | 'NO BACKUP' | 'Degraded' | 'Critical';
+  noOfBatteries?: number; // e.g. 3 for DX 1000H, 8 (or 6) for DX 3000H
+  batteryType?: string; // e.g. '12V 7.2Ah VRLA AGM', '12V 9Ah VRLA High-Rate'
+  lastBatteryChangeDate?: string; // YYYY-MM-DD
+  nextBatteryChangeDate?: string; // YYYY-MM-DD
+  batteryHealthPercent?: number; // 0-100%
+  loadPercentage?: number; // 0-100%
+}
+
+export interface CableSpecs {
+  cableType?: string; // 'Cat6', 'Cat6A', 'Cat5e', 'Single-Mode OS2', 'Multi-Mode OM3', 'Multi-Mode OM4'
+  connectorType?: string; // 'LC-LC Duplex', 'SC-LC Duplex', 'SC-SC Duplex', 'RJ45 Molded Snagless'
+  length?: string; // '1m', '2m', '3m', '5m', '10m', '15m', '20m', '305m Roll'
+  shielding?: string; // 'UTP (Unshielded)', 'STP/FTP (Shielded)', 'LSZH Fire Retardant'
+  jacketColor?: string; // 'Blue', 'Yellow', 'Aqua', 'Grey', 'Orange', 'White', 'Black'
+  bandwidthSpeed?: string; // '1 Gbps', '10 Gbps', '40 Gbps', '100 Gbps'
+}
+
 export interface AssetImages {
   devicePhoto?: string;
   serialPhoto?: string;
@@ -127,6 +163,7 @@ export interface AssetItem {
   model: string;
   serialNumber: string;
   assetTag: string;
+  crnNo?: string;
   purchaseDate: string;
   warrantyExpiry: string;
   status: AssetStatus;
@@ -142,6 +179,8 @@ export interface AssetItem {
   printerSpecs?: PrinterSpecs;
   scannerSpecs?: ScannerSpecs;
   networkSpecs?: NetworkDeviceSpecs;
+  cableSpecs?: CableSpecs;
+  upsSpecs?: UPSSpecs;
   pingStatus?: 'Online' | 'Offline' | 'Warning';
   uptime?: string;
   lastMaintenanceDate?: string;
@@ -177,6 +216,31 @@ export interface MaintenanceRecord {
   partsReplaced: string;
   cost: number;
   remarks: string;
+}
+
+export interface UPSMaintenanceRecord {
+  id: string; // e.g. PAA-UPS-MNT-2026-001
+  assetId: string; // link to UPS AssetItem
+  upsName: string;
+  modelNo: string; // 'EATON DX 1000H' | 'EATON 3000H' | 'EATON DX 3000H' | string
+  serialNumber: string;
+  voltage: string; // e.g. '230V AC In/Out, 36V DC Bus' or '230V AC In/Out, 96V DC Bus'
+  roomNo: string;
+  location: string;
+  maintenanceDate: string; // YYYY-MM-DD
+  batteryChangeDate: string; // YYYY-MM-DD (last replacement date)
+  nextBatteryChangeDate?: string; // YYYY-MM-DD (next scheduled change)
+  backupTime: string; // Tested on-load backup time e.g. '28 Minutes'
+  noOfBatteries: number; // e.g. 3 or 8
+  batteryBrandType?: string; // e.g. '12V 7.2Ah VRLA AGM (Phoenix / CSB)'
+  batteryCondition: 'Optimal (100%)' | 'Good (85%)' | 'Fair (65%)' | 'Weak / Replace Soon' | 'Defective / Replaced';
+  maintenanceType: 'Routine Battery Test & Inspection' | 'Battery Bank Replacement' | 'Quarterly Preventative Maintenance' | 'Capacitor & Inverter Service' | 'Emergency Overhaul';
+  engineer: string;
+  loadPercentage?: number; // e.g. 60%
+  cost?: number; // PKR
+  description: string;
+  remarks?: string;
+  createdAt: string;
 }
 
 export interface LogisticsReceivingRecord {
@@ -274,3 +338,64 @@ export interface OrganizationSettings {
   theme: 'dark' | 'light';
   lastBackupDate?: string;
 }
+
+export interface UPSBatteryReplacementEntry {
+  sNo: number;
+  itemDescription: string;
+  location: string;
+  date: string;
+  replacedBy: string;
+  signature: string;
+  remarks: string;
+}
+
+export interface UPSBackupListItem {
+  sNo: number;
+  itemDescription: string;
+  location: string;
+  date: string;
+  status: string;
+  checkedBy: string;
+  remarks: string;
+}
+
+export interface UPSBackupListReport {
+  id: string;
+  reportDate: string;
+  checkedByName: string;
+  supervisorName: string;
+  preparedByName: string;
+  preparedBySignature?: string;
+  verifiedByOfficerName: string;
+  verifiedByOfficerSignature?: string;
+  items: UPSBackupListItem[];
+}
+
+export interface UPSPredictiveForecast {
+  assetId: string;
+  tagNo: string;
+  modelNo: string;
+  capacityKva: number;
+  location: string;
+  roomNo: string;
+  lastReplacementDate: string;
+  historySource: 'Verified Log' | 'Maintenance Record' | 'AIIAP Fleet Baseline';
+  historyRemarks?: string;
+  elapsedDays: number;
+  elapsedMonths: number;
+  loadPercentage: number;
+  loadStressFactor: number;
+  envStressFactor: number;
+  effectiveLifespanDays: number;
+  forecastDate: string;
+  daysRemaining: number;
+  estimatedTimeToReplacementText: string;
+  rulPercent: number; // 0-100 Remaining Useful Life
+  urgency: 'critical' | 'high' | 'moderate' | 'healthy';
+  urgencyLabel: string;
+  batteriesRequired: number;
+  batterySpec: string;
+  confidenceScore: number;
+  recommendation: string;
+}
+

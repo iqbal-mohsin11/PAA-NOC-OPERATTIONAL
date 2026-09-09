@@ -943,7 +943,11 @@ export const ProcurementFormModal: React.FC<ProcurementFormModalProps> = ({
                     { label: '🖥️ 24" LED MONITOR', desc: '24-inch Full HD IPS LED Display Monitor', uom: 'Nos' },
                     { label: '💻 DESKTOP PC', desc: 'Intel Core i7 Workstation PC', uom: 'Nos' },
                     { label: '🖨️ LASER PRINTER', desc: 'Heavy Duty Laser Printer B/W (Network Enabled)', uom: 'Nos' },
-                    { label: '🧵 FIBER CABLES / PATCHCORD', desc: '10m Fiber Optic LC-LC Single Mode Patchcord', uom: 'Nos' },
+                    { label: '🧵 FIBER PATCH CORD (10m LC-LC)', desc: '10m Fiber Optic LC-LC Duplex Single-Mode OS2 Patch Cord', uom: 'Nos' },
+                    { label: '🧵 FIBER PATCH CORD (5m OM3)', desc: '5m Fiber Optic LC-LC Multi-Mode OM3 Aqua Patch Cord', uom: 'Nos' },
+                    { label: '🌐 UTP PATCH CORD (3m Cat6)', desc: '3m Cat6 UTP Molded RJ45 Snagless Patch Cord (Blue)', uom: 'Nos' },
+                    { label: '🌐 UTP PATCH CORD (5m Cat6)', desc: '5m Cat6 UTP Molded RJ45 Snagless Patch Cord (Grey)', uom: 'Nos' },
+                    { label: '📦 NETWORK CABLE ROLL (305m)', desc: 'Cat6 UTP 305m Solid Copper 23AWG Network Cable Box', uom: 'Roll' },
                     { label: '🔌 POWER CABLES', desc: '1.8m Heavy Duty C13 Power Cable', uom: 'Nos' },
                     { label: '🔌 USB PRINTER CABLE', desc: '3m High-Speed USB 2.0 A-to-B Printer Cable', uom: 'Nos' },
                     { label: '🧰 IT LAB TOOL KIT', desc: 'IT Lab Tool Kit (Network Cable Tester, Crimper & Precision Screwdriver Set)', uom: 'Kit' },
@@ -1209,7 +1213,9 @@ export const ProcurementFormModal: React.FC<ProcurementFormModalProps> = ({
                     { label: '🖥️ LED / MONITOR', desc: '24" FHD LED Monitor', type: 'other', detail: '24-inch Full HD IPS LED Display Monitor' },
                     { label: '💻 PC / DESKTOP', desc: 'Desktop Workstation PC', type: 'desktop', detail: 'Intel Core i7 Desktop Workstation PC' },
                     { label: '🖨️ PRINTER', desc: 'Laser Printer B/W', type: 'printerBw', detail: 'Heavy Duty Laser Printer B/W (Network Enabled)' },
-                    { label: '🧵 FIBER CABLES / PATCHCORD', desc: 'Fiber LC-LC Patchcord', type: 'other', detail: '10m Fiber Optic LC-LC Single Mode Patchcord' },
+                    { label: '🧵 FIBER PATCH CORD', desc: 'Fiber Patch Cord LC-LC Duplex', type: 'other', detail: 'Fiber Patch Cord (10m LC-LC Duplex Single-Mode OS2 9/125µm LSZH)' },
+                    { label: '🌐 UTP PATCH CORD / NETWORK CABLE', desc: 'Cat6 UTP Patch Cord Molded RJ45', type: 'other', detail: 'UTP Patch Cord (3m Cat6 Molded RJ45 Snagless High-Speed Gigabit Cable)' },
+                    { label: '📦 CAT6 CABLE ROLL (305m)', desc: 'Cat6 305m Roll Box', type: 'other', detail: 'Cat6 UTP 305m Solid Copper 23AWG Network Cable Box' },
                     { label: '🔌 POWER CABLES', desc: 'Heavy Duty C13 Power Cables', type: 'other', detail: '1.8m Heavy Duty C13 PC/Server Power Cable' },
                     { label: '🔌 USB PRINTER CABLES', desc: 'USB A-to-B Cable 3m', type: 'other', detail: '3m High-Speed USB 2.0 A-to-B Printer Cable' },
                     { label: '🧰 NEW TOOLS FOR IT LAB', desc: 'IT Lab Tool Kit', type: 'other', detail: 'IT Lab Tool Kit (Network Cable Tester, Crimper & Precision Screwdriver Set)' },
@@ -1236,6 +1242,41 @@ export const ProcurementFormModal: React.FC<ProcurementFormModalProps> = ({
                       title={`Click to add ${preset.desc} to request`}
                     >
                       <span>{preset.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sub-presets for Fiber & UTP Patch Cord Lengths */}
+                <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-indigo-100 dark:border-indigo-900/40">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 mr-1">
+                    Quick Cable Lengths:
+                  </span>
+                  {[
+                    { label: '🧵 Fiber 3m (LC-LC)', detail: 'Fiber Patch Cord 3m (LC-LC Duplex Single-Mode OS2)' },
+                    { label: '🧵 Fiber 5m (LC-LC)', detail: 'Fiber Patch Cord 5m (LC-LC Duplex Single-Mode OS2)' },
+                    { label: '🧵 Fiber 10m (LC-LC)', detail: 'Fiber Patch Cord 10m (LC-LC Duplex Single-Mode OS2)' },
+                    { label: '🧵 Fiber 5m (OM3 Aqua)', detail: 'Fiber Patch Cord 5m (LC-LC Multi-Mode OM3 10G Aqua)' },
+                    { label: '🌐 UTP Cat6 1m (Blue)', detail: 'UTP Patch Cord 1m (Cat6 Molded RJ45 Blue)' },
+                    { label: '🌐 UTP Cat6 2m (Grey)', detail: 'UTP Patch Cord 2m (Cat6 Molded RJ45 Grey)' },
+                    { label: '🌐 UTP Cat6 3m (Blue)', detail: 'UTP Patch Cord 3m (Cat6 Molded RJ45 Blue)' },
+                    { label: '🌐 UTP Cat6 5m (Yellow)', detail: 'UTP Patch Cord 5m (Cat6 Molded RJ45 Yellow)' },
+                    { label: '🌐 UTP Cat6 10m (Grey)', detail: 'UTP Patch Cord 10m (Cat6 Molded RJ45 Grey)' },
+                    { label: '📦 Cat6 305m Roll Box', detail: 'Cat6 UTP Network Cable 305m Solid Copper Box' },
+                  ].map((sub) => (
+                    <button
+                      key={sub.label}
+                      type="button"
+                      onClick={() => {
+                        setReqType('new');
+                        setOthersDetail((prev) => (prev ? `${prev}, 1 x ${sub.detail}` : `1 x ${sub.detail}`));
+                        if (!justification.includes(sub.detail)) {
+                          setJustification((prev) => `${prev} Required item: ${sub.detail} for network connectivity.`);
+                        }
+                      }}
+                      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 transition"
+                      title={`Click to add ${sub.detail}`}
+                    >
+                      {sub.label}
                     </button>
                   ))}
                 </div>

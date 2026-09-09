@@ -435,10 +435,95 @@ export const LogisticsReceivingModal: React.FC<LogisticsReceivingModalProps> = (
 
                 {/* 2. Equipment & Specifications */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/40 space-y-4">
-                  <h3 className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-400">
-                    <FileText className="h-4 w-4" />
-                    2. Received Equipment Details & Specifications
-                  </h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-400">
+                      <FileText className="h-4 w-4" />
+                      2. Received Equipment Details & Specifications
+                    </h3>
+                    <span className="text-[10px] text-slate-500 font-medium">Quick preset item selector</span>
+                  </div>
+
+                  {/* Quick Select Buttons for Received Items */}
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 dark:border-purple-900/40 dark:bg-purple-950/30 space-y-1.5">
+                    <div className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">
+                      Quick Fill New Item Purchasing / Inward Delivery:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        {
+                          label: '🧵 Fiber Patch Cord (10m LC-LC)',
+                          category: 'Fiber Patch Cord' as DeviceCategory,
+                          brand: 'Corning',
+                          model: 'LC-LC Duplex 9/125 OS2',
+                          spec: '10m Fiber Optic LC-to-LC Single Mode OS2 Duplex 9/125µm Patch Cord with LSZH jacket',
+                          qty: 10,
+                        },
+                        {
+                          label: '🧵 Fiber Patch Cord (5m OM3 Aqua)',
+                          category: 'Fiber Patch Cord' as DeviceCategory,
+                          brand: 'Panduit',
+                          model: 'LC-LC Duplex 50/125 OM3 10G',
+                          spec: '5m Fiber Optic LC-to-LC Multi-Mode OM3 10G Aqua Duplex Patch Cord with ceramic ferrules',
+                          qty: 10,
+                        },
+                        {
+                          label: '🌐 UTP Patch Cord (3m Cat6 Blue)',
+                          category: 'UTP Patch Cord / Network Cable' as DeviceCategory,
+                          brand: 'Schneider Electric',
+                          model: 'Actassi Cat6 UTP 3m',
+                          spec: '3m Cat6 UTP Stranded Copper RJ45 Molded Snagless Patch Cord (Gigabit 250MHz)',
+                          qty: 25,
+                        },
+                        {
+                          label: '🌐 UTP Patch Cord (5m Cat6 Grey)',
+                          category: 'UTP Patch Cord / Network Cable' as DeviceCategory,
+                          brand: 'D-Link',
+                          model: 'Cat6 UTP Patch Cord 5m',
+                          spec: '5m Cat6 UTP Stranded Copper RJ45 Molded Snagless Patch Cord (Grey)',
+                          qty: 25,
+                        },
+                        {
+                          label: '📦 Network Cable (305m Cat6 Roll)',
+                          category: 'UTP Patch Cord / Network Cable' as DeviceCategory,
+                          brand: 'Schneider Electric',
+                          model: 'Cat6 UTP 4-Pair 23AWG Solid Copper',
+                          spec: '305m (1000ft) Cat6 UTP Solid Pure Copper 23AWG Network Cable Box/Roll (Blue)',
+                          qty: 2,
+                        },
+                        {
+                          label: '💻 HP ProDesk Desktop PC',
+                          category: 'Desktop PC' as DeviceCategory,
+                          brand: 'HP',
+                          model: 'ProDesk 400 G9 Tower',
+                          spec: 'Intel Core i7-13700, 16GB DDR5 RAM, 512GB NVMe SSD, 21.5" IPS Monitor, FreeDOS',
+                          qty: 5,
+                        },
+                        {
+                          label: '🖨️ HP LaserJet Printer',
+                          category: 'Printer' as DeviceCategory,
+                          brand: 'HP',
+                          model: 'LaserJet Pro M404dn',
+                          spec: 'Duplex Network Monochrome Laser Printer, HP 26A Toner',
+                          qty: 2,
+                        },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setCategory(item.category);
+                            setBrand(item.brand);
+                            setModel(item.model);
+                            setSpecifications(item.spec);
+                            setQuantity(item.qty);
+                          }}
+                          className="rounded-md border border-purple-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-800 hover:border-purple-500 hover:bg-purple-100 dark:border-purple-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition shadow-2xs"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>

@@ -157,28 +157,31 @@ echo.
 echo ===============================================================================
 echo  [STEP 6/6] Creating Desktop Shortcut & Windows Startup Entry...
 echo ===============================================================================
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { \
-    $WshShell = New-Object -comObject WScript.Shell; \
-    \
-    # Desktop Shortcut \
-    $DesktopPath = [Environment]::GetFolderPath('Desktop'); \
-    $Shortcut = $WshShell.CreateShortcut(\"$DesktopPath\PAA Sentinel IT Hub.lnk\"); \
-    $Shortcut.TargetPath = \"%~dp0INSTALL_ON_PC.bat\"; \
-    $Shortcut.WorkingDirectory = \"%~dp0\"; \
-    $Shortcut.Description = 'Pakistan Airports Authority IT Asset & Logistics Hub'; \
-    $Shortcut.Save(); \
-    Write-Host '[OK] Created Desktop Shortcut: PAA Sentinel IT Hub.lnk'; \
-    \
-    # Windows Startup Shortcut \
-    $StartupPath = [Environment]::GetFolderPath('Startup'); \
-    $AutoShortcut = $WshShell.CreateShortcut(\"$StartupPath\PAA_Sentinel_AutoServer.lnk\"); \
-    $AutoShortcut.TargetPath = \"%~dp0INSTALL_ON_PC.bat\"; \
-    $AutoShortcut.WorkingDirectory = \"%~dp0\"; \
-    $AutoShortcut.WindowStyle = 7; \
-    $AutoShortcut.Description = 'Auto-start PAA Sentinel Server on Windows Boot'; \
-    $AutoShortcut.Save(); \
-    Write-Host '[OK] Created Windows Startup Entry (Auto-starts on PC boot)!'; \
-}"
+set "VBS_MK=%TEMP%\paa_mkshortcuts_inst.vbs"
+(
+echo Set oWS = CreateObject("WScript.Shell"^)
+echo sDesktop = oWS.SpecialFolders("Desktop"^)
+echo Set oLink = oWS.CreateShortcut(sDesktop ^& "\PAA Sentinel IT Hub.lnk"^)
+echo oLink.TargetPath = "%~dp0INSTALL_ON_PC.bat"
+echo oLink.WorkingDirectory = "%~dp0"
+echo oLink.Description = "Pakistan Airports Authority IT Asset & Logistics Hub"
+echo oLink.IconLocation = "shell32.dll,13"
+echo oLink.Save
+echo Set oUrl = oWS.CreateShortcut(sDesktop ^& "\PAA Sentinel Web App.url"^)
+echo oUrl.TargetPath = "http://localhost:3000"
+echo oUrl.Save
+echo sStartup = oWS.SpecialFolders("Startup"^)
+echo Set oAuto = oWS.CreateShortcut(sStartup ^& "\PAA_Sentinel_AutoServer.lnk"^)
+echo oAuto.TargetPath = "%~dp0INSTALL_ON_PC.bat"
+echo oAuto.WorkingDirectory = "%~dp0"
+echo oAuto.WindowStyle = 7
+echo oAuto.Save
+) > "%VBS_MK%"
+cscript //nologo "%VBS_MK%"
+if exist "%VBS_MK%" del "%VBS_MK%" >nul 2>nul
+echo [OK] Created Desktop Shortcut: PAA Sentinel IT Hub.lnk
+echo [OK] Created Desktop Web Link: PAA Sentinel Web App.url
+echo [OK] Created Windows Startup Entry (Auto-starts on PC boot)
 echo.
 
 :: -----------------------------------------------------------------------------

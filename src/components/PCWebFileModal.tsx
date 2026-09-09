@@ -38,14 +38,19 @@ interface PCWebFileModalProps {
 
 export const PCWebFileModal: React.FC<PCWebFileModalProps> = ({ isOpen, onClose }) => {
   const { assets, dbStatus, refreshDbData } = useInventory();
-  const [activeTab, setActiveTab] = useState<'autoinstall' | 'install' | 'lan' | 'autostart' | 'standalone'>('autoinstall');
+  const [activeTab, setActiveTab] = useState<'shortcut' | 'exe' | 'autoinstall' | 'install' | 'lan' | 'autostart' | 'standalone'>('shortcut');
   const [copiedCompose, setCopiedCompose] = useState(false);
   const [copiedFirewall, setCopiedFirewall] = useState(false);
   const [copiedNpm, setCopiedNpm] = useState(false);
   const [copiedPs1Liner, setCopiedPs1Liner] = useState(false);
   const [downloadedAutoInstaller, setDownloadedAutoInstaller] = useState(false);
+  const [downloadedExeBuilder, setDownloadedExeBuilder] = useState(false);
+  const [downloadedExeSource, setDownloadedExeSource] = useState(false);
   const [downloadedInstaller, setDownloadedInstaller] = useState(false);
   const [downloadedShortcut, setDownloadedShortcut] = useState(false);
+  const [downloadedVbs, setDownloadedVbs] = useState(false);
+  const [downloadedUrlDirect, setDownloadedUrlDirect] = useState(false);
+  const [copiedShortcutCmd, setCopiedShortcutCmd] = useState(false);
   const [downloadedSilent, setDownloadedSilent] = useState(false);
   const [downloadedStartup, setDownloadedStartup] = useState(false);
   const [downloadedHtml, setDownloadedHtml] = useState(false);
@@ -255,7 +260,7 @@ npm run dev
   const handleDownloadShortcut = () => {
     const batContent = `@echo off
 setlocal EnableDelayedExpansion
-title PAA Sentinel v5.0 - Create Desktop Shortcut
+title PAA Sentinel v5.0 - Desktop Shortcut Creator
 color 0A
 cls
 
@@ -267,41 +272,55 @@ echo.
 
 cd /d "%~dp0"
 
-echo [1/2] Creating Desktop Shortcut for PAA Sentinel Server...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { \\
-    $WshShell = New-Object -comObject WScript.Shell; \\
-    $DesktopPath = [Environment]::GetFolderPath('Desktop'); \\
-    \\
-    # 1. Server Launcher Shortcut on Desktop \\
-    $Shortcut = $WshShell.CreateShortcut(\\"$DesktopPath\\\\PAA Sentinel IT Hub.lnk\\"); \\
-    $Shortcut.TargetPath = \\"%~dp0INSTALL_ON_PC.bat\\"; \\
-    $Shortcut.WorkingDirectory = \\"%~dp0\\"; \\
-    $Shortcut.Description = 'Pakistan Airports Authority IT Asset & Logistics Hub Server'; \\
-    $Shortcut.IconLocation = 'shell32.dll,13'; \\
-    $Shortcut.Save(); \\
-    Write-Host '[OK] Created: Desktop\\\\PAA Sentinel IT Hub.lnk' -ForegroundColor Green; \\
-    \\
-    # 2. Direct Browser Web App URL Shortcut on Desktop \\
-    $UrlShortcut = \\"$DesktopPath\\\\PAA Sentinel Web App.url\\"; \\
-    '[InternetShortcut]' | Out-File -FilePath $UrlShortcut -Encoding ascii; \\
-    'URL=http://localhost:3000' | Out-File -FilePath $UrlShortcut -Append -Encoding ascii; \\
-    'IconIndex=0' | Out-File -FilePath $UrlShortcut -Append -Encoding ascii; \\
-    'IconFile=shell32.dll,14' | Out-File -FilePath $UrlShortcut -Append -Encoding ascii; \\
-    Write-Host '[OK] Created: Desktop\\\\PAA Sentinel Web App.url' -ForegroundColor Green; \\
-}"
+echo [1/3] Creating Windows Desktop Shortcuts...
+
+set "TARGET=%~dp0INSTALL_ON_PC.bat"
+if exist "%~dp0PAA_Sentinel.exe" (
+    set "TARGET=%~dp0PAA_Sentinel.exe"
+) else if exist "%~dp0Install_and_Run_PAA_Server.bat" (
+    set "TARGET=%~dp0Install_and_Run_PAA_Server.bat"
+)
+
+set "VBS_SCRIPT=%TEMP%\\paa_mkshortcut.vbs"
+(
+echo Set oWS = CreateObject("WScript.Shell"^)
+echo sDesktop = oWS.SpecialFolders("Desktop"^)
+echo Set oLink = oWS.CreateShortcut(sDesktop ^& "\\PAA Sentinel IT Hub.lnk"^)
+echo oLink.TargetPath = "%TARGET%"
+echo oLink.WorkingDirectory = "%~dp0"
+echo oLink.Description = "Pakistan Airports Authority IT Asset & Logistics Hub"
+echo oLink.IconLocation = "shell32.dll,13"
+echo oLink.Save
+echo Set oUrl = oWS.CreateShortcut(sDesktop ^& "\\PAA Sentinel Web App.url"^)
+echo oUrl.TargetPath = "http://localhost:3000"
+echo oUrl.Save
+) > "%VBS_SCRIPT%"
+
+cscript //nologo "%VBS_SCRIPT%"
+if exist "%VBS_SCRIPT%" del "%VBS_SCRIPT%" >nul 2>nul
 
 echo.
-echo [2/2] Verifying shortcuts...
+echo [2/3] Checking for PAA_Sentinel.exe...
+if exist "%~dp0PAA_Sentinel.exe" (
+    copy /y "%~dp0PAA_Sentinel.exe" "%USERPROFILE%\\Desktop\\PAA_Sentinel.exe" >nul 2>nul
+    echo [OK] Copied PAA_Sentinel.exe directly to your Desktop!
+)
+
+echo.
+echo [3/3] Verifying Desktop items...
 if exist "%USERPROFILE%\\Desktop\\PAA Sentinel IT Hub.lnk" (
-    echo [SUCCESS] "PAA Sentinel IT Hub" launcher is now on your Desktop!
+    echo [FOUND] Desktop\\PAA Sentinel IT Hub.lnk
 )
 if exist "%USERPROFILE%\\Desktop\\PAA Sentinel Web App.url" (
-    echo [SUCCESS] "PAA Sentinel Web App" direct link is now on your Desktop!
+    echo [FOUND] Desktop\\PAA Sentinel Web App.url
 )
 
 echo.
 echo ===============================================================================
-echo  Done! You can now double-click either icon on your Desktop anytime to run PAA.
+echo      [SUCCESS] PAA SENTINEL SHORTCUTS ARE NOW ON YOUR DESKTOP!
+echo ===============================================================================
+echo  1. "PAA Sentinel IT Hub" (Desktop Shortcut) -> Launches Server
+echo  2. "PAA Sentinel Web App" (Browser Link)    -> http://localhost:3000
 echo ===============================================================================
 echo.
 pause
@@ -316,6 +335,369 @@ pause
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setDownloadedShortcut(true);
+  };
+
+  // Download Create_Desktop_Shortcut.vbs (100% silent 1-click Windows native)
+  const handleDownloadVbsShortcut = () => {
+    const vbsContent = `' ===============================================================================
+'      PAKISTAN AIRPORTS AUTHORITY (PAA) - IT ASSET & LOGISTICS HUB
+'                OFFICIAL 1-CLICK DESKTOP SHORTCUT CREATOR
+' ===============================================================================
+Option Explicit
+
+Dim oWS, fso, strCurrentDir, strDesktop, strTarget, oLink, oUrl
+
+Set oWS = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+
+strCurrentDir = fso.GetParentFolderName(WScript.ScriptFullName)
+strDesktop = oWS.SpecialFolders("Desktop")
+
+' Determine best target launcher
+strTarget = strCurrentDir & "\\INSTALL_ON_PC.bat"
+If fso.FileExists(strCurrentDir & "\\PAA_Sentinel.exe") Then
+    strTarget = strCurrentDir & "\\PAA_Sentinel.exe"
+ElseIf fso.FileExists(strCurrentDir & "\\Install_and_Run_PAA_Server.bat") Then
+    strTarget = strCurrentDir & "\\Install_and_Run_PAA_Server.bat"
+End If
+
+' 1. Create main launcher shortcut (.lnk)
+Set oLink = oWS.CreateShortcut(strDesktop & "\\PAA Sentinel IT Hub.lnk")
+oLink.TargetPath = strTarget
+oLink.WorkingDirectory = strCurrentDir
+oLink.Description = "Pakistan Airports Authority IT Asset & Logistics Hub Server"
+oLink.IconLocation = "shell32.dll,13"
+oLink.Save
+
+' 2. Create direct browser web shortcut (.url)
+Set oUrl = oWS.CreateShortcut(strDesktop & "\\PAA Sentinel Web App.url")
+oUrl.TargetPath = "http://localhost:3000"
+oUrl.Save
+
+' 3. If PAA_Sentinel.exe exists, copy it to Desktop as well
+If fso.FileExists(strCurrentDir & "\\PAA_Sentinel.exe") Then
+    On Error Resume Next
+    fso.CopyFile strCurrentDir & "\\PAA_Sentinel.exe", strDesktop & "\\PAA_Sentinel.exe", True
+    On Error Goto 0
+End If
+
+' 4. Notification
+MsgBox "PAA Sentinel Desktop Shortcuts created successfully on your Desktop!" & vbCrLf & vbCrLf & _
+       "• 'PAA Sentinel IT Hub' (Server Launcher)" & vbCrLf & _
+       "• 'PAA Sentinel Web App' (http://localhost:3000)" & vbCrLf & vbCrLf & _
+       "Double-click either icon on your Desktop anytime to access.", _
+       vbInformation, "PAA Sentinel IT Asset Hub"
+`;
+    const blob = new Blob([vbsContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Create_Desktop_Shortcut.vbs';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDownloadedVbs(true);
+  };
+
+  // Direct download for PAA Sentinel Web App.url
+  const handleDownloadUrlShortcut = () => {
+    const urlContent = `[InternetShortcut]\r\nURL=http://localhost:3000\r\nIconIndex=0\r\nIconFile=%SystemRoot%\\system32\\shell32.dll\r\n`;
+    const blob = new Blob([urlContent], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PAA Sentinel Web App.url';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDownloadedUrlDirect(true);
+  };
+
+  // Download BUILD_WINDOWS_EXE.bat
+  const handleDownloadExeBuilder = () => {
+    const batContent = `@echo off
+setlocal EnableDelayedExpansion
+title PAA Sentinel - Windows .EXE Executable Builder
+color 0A
+cls
+
+echo ===============================================================================
+echo      PAKISTAN AIRPORTS AUTHORITY (PAA) - IT ASSET & LOGISTICS HUB
+echo                 NATIVE WINDOWS .EXE COMPILER & BUILDER
+echo ===============================================================================
+echo  Target: PAA_Sentinel.exe (Windows 64-bit / 32-bit Standalone GUI Launcher)
+echo  Features:
+echo   - 100%% Native Windows GUI (.exe)
+echo   - No black CMD terminal popup
+echo   - Runs server invisibly in background
+echo   - Windows Taskbar System Tray icon (Shield) with Context Menu
+echo   - Auto-launches http://localhost:3000 in your default browser
+echo   - Auto-copies PAA_Sentinel.exe to your Desktop
+echo ===============================================================================
+echo.
+
+cd /d "%~dp0"
+
+echo [STEP 1/4] Detecting Microsoft .NET C# Compiler (csc.exe)...
+set "CSC="
+if exist "%windir%\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe" (
+    set "CSC=%windir%\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe"
+) else if exist "%windir%\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe" (
+    set "CSC=%windir%\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe"
+) else (
+    for /f "delims=" %%I in ('where csc 2^>nul') do set "CSC=%%I"
+)
+
+if "%CSC%"=="" (
+    echo [ERROR] Microsoft .NET Framework C# compiler was not found.
+    pause
+    exit /b 1
+)
+
+echo [OK] Found .NET C# Compiler: %CSC%
+echo.
+
+echo [STEP 2/4] Verifying C# Source Code (PAA_Sentinel_Launcher.cs)...
+if not exist "%~dp0PAA_Sentinel_Launcher.cs" (
+    echo [ERROR] PAA_Sentinel_Launcher.cs not found in current folder!
+    pause
+    exit /b 1
+)
+echo [OK] Source code verified.
+echo.
+
+echo [STEP 3/4] Compiling native Windows executable: PAA_Sentinel.exe...
+"%CSC%" /target:winexe /platform:anycpu /optimize+ /out:"%~dp0PAA_Sentinel.exe" "%~dp0PAA_Sentinel_Launcher.cs"
+
+if %errorlevel% neq 0 (
+    echo [ERROR] Compilation failed.
+    pause
+    exit /b 1
+)
+
+echo [SUCCESS] PAA_Sentinel.exe compiled successfully!
+echo.
+
+echo [STEP 4/4] Placing PAA_Sentinel.exe onto your Desktop...
+copy /y "%~dp0PAA_Sentinel.exe" "%USERPROFILE%\\Desktop\\PAA_Sentinel.exe" >nul 2>nul
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { \\
+    $WshShell = New-Object -comObject WScript.Shell; \\
+    $DesktopPath = [Environment]::GetFolderPath('Desktop'); \\
+    $Shortcut = $WshShell.CreateShortcut(\\"$DesktopPath\\\\PAA Sentinel (Run .exe).lnk\\"); \\
+    $Shortcut.TargetPath = \\"%~dp0PAA_Sentinel.exe\\"; \\
+    $Shortcut.WorkingDirectory = \\"%~dp0\\"; \\
+    $Shortcut.Description = 'Launch Pakistan Airports Authority IT Asset Hub'; \\
+    $Shortcut.IconLocation = 'shell32.dll,13'; \\
+    $Shortcut.Save(); \\
+    Write-Host '[OK] Created Desktop Shortcut: PAA Sentinel (Run .exe).lnk' -ForegroundColor Green; \\
+}"
+
+echo.
+echo ===============================================================================
+echo                [100%% COMPLETE] PAA_SENTINEL.EXE IS READY!
+echo ===============================================================================
+echo  Your standalone Windows executable is located at:
+echo  1. %~dp0PAA_Sentinel.exe
+echo  2. %USERPROFILE%\\Desktop\\PAA_Sentinel.exe
+echo ===============================================================================
+echo.
+set /p RUNNOW="Would you like to run PAA_Sentinel.exe right now? (Y/N): "
+if /i "%RUNNOW%"=="Y" (
+    start "" "%~dp0PAA_Sentinel.exe"
+)
+`;
+    const blob = new Blob([batContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'BUILD_WINDOWS_EXE.bat';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDownloadedExeBuilder(true);
+  };
+
+  // Download PAA_Sentinel_Launcher.cs
+  const handleDownloadExeSource = () => {
+    const csContent = `using System;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace PAASentinel
+{
+    static class Program
+    {
+        private static NotifyIcon trayIcon;
+        private static ContextMenuStrip trayMenu;
+        private static Process serverProcess;
+        private static string appDir;
+        private const int ServerPort = 3000;
+        private const string LocalUrl = "http://localhost:3000";
+
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            appDir = AppDomain.CurrentDomain.BaseDirectory;
+
+            bool isFirstInstance;
+            using (Mutex mutex = new Mutex(true, "PAA_Sentinel_SingleInstance_App_Mutex", out isFirstInstance))
+            {
+                if (!isFirstInstance)
+                {
+                    OpenBrowser(LocalUrl);
+                    return;
+                }
+
+                trayMenu = new ContextMenuStrip();
+                ToolStripMenuItem titleItem = new ToolStripMenuItem("PAA Sentinel v5.0 (JIAP / HQCAA)");
+                titleItem.Enabled = false;
+                titleItem.Font = new Font(titleItem.Font, FontStyle.Bold);
+                trayMenu.Items.Add(titleItem);
+                trayMenu.Items.Add(new ToolStripSeparator());
+
+                ToolStripMenuItem openItem = new ToolStripMenuItem("🌐 Open Dashboard (localhost:3000)", null, (s, e) => OpenBrowser(LocalUrl));
+                openItem.Font = new Font(openItem.Font, FontStyle.Bold);
+                trayMenu.Items.Add(openItem);
+                trayMenu.Items.Add(new ToolStripMenuItem("📡 View LAN / Network IP", null, (s, e) => ShowLanDetails()));
+                trayMenu.Items.Add(new ToolStripMenuItem("🔄 Restart Background Server", null, (s, e) => RestartBackgroundServer()));
+                trayMenu.Items.Add(new ToolStripSeparator());
+                trayMenu.Items.Add(new ToolStripMenuItem("🛑 Exit PAA Sentinel", null, (s, e) => ExitApplication()));
+
+                trayIcon = new NotifyIcon();
+                trayIcon.Text = "PAA Sentinel IT Asset Hub (Port 3000)";
+                trayIcon.Icon = SystemIcons.Shield;
+                trayIcon.ContextMenuStrip = trayMenu;
+                trayIcon.Visible = true;
+                trayIcon.DoubleClick += (s, e) => OpenBrowser(LocalUrl);
+
+                StartServerIfNotRunning();
+                OpenBrowser(LocalUrl);
+
+                try
+                {
+                    trayIcon.ShowBalloonTip(3000, "PAA Sentinel Server Active", "The Asset Hub is running on http://localhost:3000\\nRight-click tray icon to manage.", ToolTipIcon.Info);
+                }
+                catch { }
+
+                Application.Run();
+            }
+        }
+
+        private static bool IsPortInUse(int port)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient())
+                {
+                    IAsyncResult result = client.BeginConnect("127.0.0.1", port, null, null);
+                    bool success = result.AsyncWaitHandle.WaitOne(800);
+                    if (success && client.Connected)
+                    {
+                        client.EndConnect(result);
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static void StartServerIfNotRunning()
+        {
+            if (IsPortInUse(ServerPort)) return;
+
+            try
+            {
+                string serverScript = Path.Combine(appDir, "dist", "server.cjs");
+                string autoBat = Path.Combine(appDir, "INSTALL_ON_PC.bat");
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.WorkingDirectory = appDir;
+                psi.CreateNoWindow = true;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                psi.UseShellExecute = false;
+
+                if (File.Exists(serverScript))
+                {
+                    psi.FileName = "node";
+                    psi.Arguments = "\\"" + serverScript + "\\"";
+                }
+                else if (File.Exists(autoBat))
+                {
+                    psi.FileName = "cmd.exe";
+                    psi.Arguments = "/c \\"" + autoBat + "\\"";
+                }
+                else
+                {
+                    psi.FileName = "cmd.exe";
+                    psi.Arguments = "/c npm run dev";
+                }
+
+                serverProcess = Process.Start(psi);
+                for (int i = 0; i < 20; i++)
+                {
+                    Thread.Sleep(500);
+                    if (IsPortInUse(ServerPort)) break;
+                }
+            }
+            catch { }
+        }
+
+        private static void OpenBrowser(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch { Process.Start("cmd", "/c start " + url); }
+        }
+
+        private static void ShowLanDetails()
+        {
+            string hostName = Dns.GetHostName();
+            IPHostEntry host = Dns.GetHostEntry(hostName);
+            string ipList = "";
+            foreach (IPAddress ip in host.AddressList)
+            {
+                if (ip.AddressFamily == AddressFamily.InterNetwork)
+                    ipList += "• http://" + ip.ToString() + ":" + ServerPort + "\\n";
+            }
+            MessageBox.Show("Colleagues and other PCs on your office Wi-Fi / LAN can access PAA Sentinel at:\\n\\n" + ipList, "PAA Sentinel - LAN Network Access", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private static void RestartBackgroundServer()
+        {
+            try { if (serverProcess != null && !serverProcess.HasExited) serverProcess.Kill(); } catch { }
+            StartServerIfNotRunning();
+            if (trayIcon != null) trayIcon.ShowBalloonTip(2000, "Server Restarted", "PAA Sentinel is ready on " + LocalUrl, ToolTipIcon.Info);
+        }
+
+        private static void ExitApplication()
+        {
+            try { if (serverProcess != null && !serverProcess.HasExited) serverProcess.Kill(); } catch { }
+            if (trayIcon != null) { trayIcon.Visible = false; trayIcon.Dispose(); }
+            Application.Exit();
+        }
+    }
+}
+`;
+    const blob = new Blob([csContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PAA_Sentinel_Launcher.cs';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDownloadedExeSource(true);
   };
 
   // 1. Download Install_and_Run_PAA_Server.bat
@@ -655,6 +1037,28 @@ volumes:
         {/* Tab Navigation */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800">
           <button
+            onClick={() => setActiveTab('shortcut')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
+              activeTab === 'shortcut'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/20 rounded-t-lg font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            <Monitor className="h-4 w-4 text-blue-500" />
+            <span>📌 Desktop Shortcut</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('exe')}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
+              activeTab === 'exe'
+                ? 'border-cyan-500 text-cyan-600 dark:text-cyan-400 bg-cyan-50/50 dark:bg-cyan-950/20 rounded-t-lg font-black'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            }`}
+          >
+            <Monitor className="h-4 w-4 text-cyan-500" />
+            <span>💻 Windows .EXE Executable</span>
+          </button>
+          <button
             onClick={() => setActiveTab('autoinstall')}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 transition ${
               activeTab === 'autoinstall'
@@ -710,6 +1114,330 @@ volumes:
             <span>Single-File Offline .HTML</span>
           </button>
         </div>
+
+        {/* Tab Content: Desktop Shortcuts */}
+        {activeTab === 'shortcut' && (
+          <div className="space-y-4">
+            {/* Hero Card */}
+            <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-950/60 via-slate-900 to-slate-900 p-5 shadow-xl space-y-4 text-white">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500 text-slate-950 font-black text-xs shadow-md">
+                      📌
+                    </span>
+                    <h4 className="font-extrabold text-base text-white tracking-tight">
+                      Windows Desktop Shortcut Creator (Installation Done!)
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                    Now that installation is finished, add desktop shortcuts to launch the background server and open the web dashboard in one double-click anytime.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    onClick={handleDownloadVbsShortcut}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-400 hover:to-cyan-400 text-slate-950 font-black text-xs px-4 py-3 shadow-lg shadow-blue-500/25 transition transform active:scale-95 cursor-pointer"
+                  >
+                    {downloadedVbs ? <CheckCircle2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                    <span>{downloadedVbs ? 'VBS Creator Ready!' : 'Download 1-Click VBS'}</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadShortcut}
+                    className="flex items-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-4 py-3 border border-slate-700 transition transform active:scale-95 cursor-pointer"
+                  >
+                    {downloadedShortcut ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Terminal className="h-4 w-4" />}
+                    <span>{downloadedShortcut ? 'Shortcut .BAT Ready!' : 'Download .BAT Script'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* What gets created */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800 text-xs">
+                <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
+                  <Monitor className="h-5 w-5 text-blue-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-white">PAA Sentinel IT Hub.lnk</div>
+                    <div className="text-[11px] text-slate-400">Desktop launcher shortcut (starts server &amp; opens app)</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 bg-slate-800/80 p-3 rounded-xl border border-slate-700/60">
+                  <Globe className="h-5 w-5 text-cyan-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-white">PAA Sentinel Web App.url</div>
+                    <div className="text-[11px] text-slate-400">Direct link icon (opens http://localhost:3000 in browser)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3 Easy Ways to Create Shortcut */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Choose How to Create Your Desktop Shortcut:
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* Option 1: VBS */}
+                <div className="rounded-xl border border-blue-500/30 bg-blue-50/40 dark:bg-blue-950/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-blue-900 dark:text-blue-300">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-slate-950 text-[10px] font-black">
+                        1
+                      </span>
+                      <span>Method 1 (Recommended)</span>
+                    </div>
+                    <span className="rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 text-[10px] font-bold px-2 py-0.5">
+                      Fastest
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Double-click <strong className="font-mono text-blue-600 dark:text-blue-400">Create_Desktop_Shortcut.vbs</strong> in your project folder. It runs completely silently in Windows Script Host and pops up a confirmation when ready.
+                  </p>
+                  <button
+                    onClick={handleDownloadVbsShortcut}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download Create_Desktop_Shortcut.vbs</span>
+                  </button>
+                </div>
+
+                {/* Option 2: BAT */}
+                <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/80 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200 text-[10px] font-black">
+                        2
+                      </span>
+                      <span>Method 2 (Batch Script)</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Double-click <strong className="font-mono text-slate-800 dark:text-slate-200">CREATE_DESKTOP_SHORTCUT.bat</strong> in your project folder. It verifies file paths and prints green confirmation in CMD.
+                  </p>
+                  <button
+                    onClick={handleDownloadShortcut}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download CREATE_DESKTOP_SHORTCUT.bat</span>
+                  </button>
+                </div>
+
+                {/* Option 3: Direct URL */}
+                <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/80 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200 text-[10px] font-black">
+                        3
+                      </span>
+                      <span>Method 3 (Direct File)</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Download the pre-made <strong className="font-mono text-slate-800 dark:text-slate-200">PAA Sentinel Web App.url</strong> and save/drag it directly onto your Desktop!
+                  </p>
+                  <button
+                    onClick={handleDownloadUrlShortcut}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download .URL File Directly</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* PowerShell 1-Liner */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="font-bold text-xs text-slate-900 dark:text-white">
+                    Alternative: Run from PowerShell in Project Folder
+                  </h5>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    If you already have a PowerShell window open in your project directory:
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText('powershell -ExecutionPolicy Bypass -File .\\CreateDesktopShortcut.ps1');
+                    setCopiedShortcutCmd(true);
+                    setTimeout(() => setCopiedShortcutCmd(false), 2000);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 dark:bg-blue-950 dark:hover:bg-blue-900 dark:text-blue-300 text-xs font-bold transition cursor-pointer"
+                >
+                  {copiedShortcutCmd ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedShortcutCmd ? 'Copied!' : 'Copy Command'}</span>
+                </button>
+              </div>
+
+              <div className="bg-slate-900 text-cyan-300 font-mono text-xs p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+                <code>powershell -ExecutionPolicy Bypass -File .\CreateDesktopShortcut.ps1</code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content: Windows .EXE Executable */}
+        {activeTab === 'exe' && (
+          <div className="space-y-4">
+            {/* Hero Card */}
+            <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/50 via-slate-900 to-slate-900 p-5 shadow-xl space-y-4 text-white">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500 text-slate-950 font-black text-xs shadow-md">
+                      EXE
+                    </span>
+                    <h4 className="font-extrabold text-base text-white tracking-tight">
+                      PAA_Sentinel.exe — Native Windows Standalone Executable
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                    A true 64-bit Windows GUI program (.exe) with System Tray icon, background server management, and automatic browser launch. No CMD console window remains open!
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    onClick={handleDownloadExeBuilder}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 font-black text-xs px-5 py-3 shadow-lg shadow-cyan-500/25 transition transform active:scale-95 cursor-pointer"
+                  >
+                    {downloadedExeBuilder ? <CheckCircle2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+                    <span>{downloadedExeBuilder ? 'BUILD_WINDOWS_EXE.bat Ready!' : 'Download BUILD_WINDOWS_EXE.bat'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Core Features */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-800 text-[11px]">
+                <div className="flex items-center gap-2 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+                  <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>100% Native Windows GUI (.exe)</span>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+                  <CheckCircle2 className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>No black terminal window</span>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+                  <Monitor className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>Windows Taskbar Tray Icon</span>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+                  <Globe className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <span>Auto-opens localhost:3000</span>
+                </div>
+              </div>
+            </div>
+
+            {/* How to Build & Run PAA_Sentinel.exe */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                How to Build PAA_Sentinel.exe on Your PC in 1 Click:
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                {/* Step 1 */}
+                <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-cyan-800 text-[10px] font-black dark:bg-cyan-950 dark:text-cyan-300">
+                      1
+                    </span>
+                    <span>Extract Project Files</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Extract your exported project files into any folder on your Windows PC (e.g. <code className="font-mono text-cyan-600 dark:text-cyan-400">C:\PAA_Sentinel</code>).
+                  </p>
+                </div>
+
+                {/* Step 2 */}
+                <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-cyan-800 text-[10px] font-black dark:bg-cyan-950 dark:text-cyan-300">
+                      2
+                    </span>
+                    <span>Run BUILD_WINDOWS_EXE.bat</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Double-click <code className="font-mono font-bold text-cyan-600 dark:text-cyan-400">BUILD_WINDOWS_EXE.bat</code> (or <code className="font-mono font-bold">MAKE_EXE.bat</code>). It compiles <code className="font-mono">PAA_Sentinel.exe</code> instantly using Windows' built-in C# compiler (<code className="font-mono text-[10px]">csc.exe</code>).
+                  </p>
+                </div>
+
+                {/* Step 3 */}
+                <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 text-cyan-800 text-[10px] font-black dark:bg-cyan-950 dark:text-cyan-300">
+                      3
+                    </span>
+                    <span>Double-Click PAA_Sentinel.exe</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    A copy is automatically placed on your <strong className="text-slate-900 dark:text-white">Desktop</strong>! Double-click it anytime to launch the server and open the web dashboard.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Source & Batch Files Download Grid */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="font-bold text-xs text-slate-900 dark:text-white">
+                    Included Executable Source &amp; Automation Files
+                  </h5>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    These files are already included in your project root, or you can re-download them individually here:
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={handleDownloadExeBuilder}
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 hover:border-cyan-500 dark:hover:border-cyan-500 transition group text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-950 text-cyan-600 dark:text-cyan-400">
+                      <Terminal className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
+                        BUILD_WINDOWS_EXE.bat
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                        1-Click compiler script for Windows
+                      </div>
+                    </div>
+                  </div>
+                  <Download className="h-4 w-4 text-slate-400 group-hover:text-cyan-500 shrink-0" />
+                </button>
+
+                <button
+                  onClick={handleDownloadExeSource}
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 hover:border-cyan-500 dark:hover:border-cyan-500 transition group text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                      <FileCode className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                        PAA_Sentinel_Launcher.cs
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Windows Forms GUI C# Source Code
+                      </div>
+                    </div>
+                  </div>
+                  <Download className="h-4 w-4 text-slate-400 group-hover:text-indigo-500 shrink-0" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab Content: 100% Zero-Touch Auto-Install */}
         {activeTab === 'autoinstall' && (

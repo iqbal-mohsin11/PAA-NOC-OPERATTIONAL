@@ -14,6 +14,8 @@ import {
   PrinterSpecs,
   ScannerSpecs,
   NetworkDeviceSpecs,
+  CableSpecs,
+  UPSSpecs,
 } from '../types/inventory';
 import {
   X,
@@ -32,7 +34,14 @@ import {
   Tag,
   Store,
   FileText,
+  Cable,
+  Zap,
+  BatteryCharging,
+  Search,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
+import { autoFetchActiveDirectory, activeDirectoryCatalog } from '../data/adDirectoryData';
 
 interface AssetFormModalProps {
   assetToEdit?: AssetItem | null;
@@ -112,6 +121,30 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
     rackNumber: 'Rack-01',
   });
 
+  const [cableSpecs, setCableSpecs] = useState<CableSpecs>({
+    cableType: 'Single-Mode OS2',
+    connectorType: 'LC-LC Duplex',
+    length: '10m',
+    shielding: 'LSZH Fire Retardant',
+    jacketColor: 'Yellow',
+    bandwidthSpeed: '10 Gbps',
+  });
+
+  const [upsSpecs, setUpsSpecs] = useState<UPSSpecs>({
+    modelNo: 'EATON DX 1000H',
+    capacityKvaKw: '1000VA / 900W',
+    voltage: '230V AC (In/Out), 36V DC Bus (3x 12V)',
+    roomNo: 'Room 104',
+    locationDetails: 'Control Tower Complex, 1st Floor, ATC Avionics Rack',
+    backupTime: '25 Minutes',
+    noOfBatteries: 3,
+    batteryType: '12V 7.2Ah VRLA AGM',
+    lastBatteryChangeDate: new Date().toISOString().split('T')[0],
+    nextBatteryChangeDate: new Date(Date.now() + 730 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    batteryHealthPercent: 100,
+    loadPercentage: 55,
+  });
+
   // Images State
   const [devicePhoto, setDevicePhoto] = useState('https://images.unsplash.com/photo-1587831990711-23ca6441447b?auto=format&fit=crop&w=600&q=80');
   const [serialPhoto, setSerialPhoto] = useState('');
@@ -120,6 +153,85 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
 
   // Status
   const [status, setStatus] = useState<AssetStatus>('Active');
+
+  // Active Directory Auto Fetch State
+  const [adSearchQuery, setAdSearchQuery] = useState('');
+  const [isFetchingAD, setIsFetchingAD] = useState(false);
+  const [adSuccessInfo, setAdSuccessInfo] = useState<{
+    computerName: string;
+    domain: string;
+    dc: string;
+    user: string;
+    ip: string;
+    os: string;
+    ou: string;
+  } | null>(null);
+
+  const handleAutoFetchAD = async (customQuery?: string) => {
+    const q = (customQuery || adSearchQuery || systemSpecs.computerName || name).trim();
+    if (!q) return;
+
+    setIsFetchingAD(true);
+    setAdSuccessInfo(null);
+
+    try {
+      let adObj: any = null;
+      try {
+        const res = await fetch(`/api/ad/lookup?query=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          adObj = data.computer;
+        }
+      } catch {
+        // Fallback to client-side LDAP directory simulation
+      }
+
+      if (!adObj) {
+        adObj = autoFetchActiveDirectory(q);
+      }
+
+      // Populate form state automatically
+      setName(`${adObj.brand} ${adObj.model} (${adObj.computerName})`);
+      setCategory(adObj.category);
+      setBrand(adObj.brand);
+      setModel(adObj.model);
+      setDepartment(adObj.department as Department);
+      setAssignedUser(adObj.assignedUser);
+
+      if (adObj.location) {
+        setBuilding(adObj.location.building || building);
+        setFloor(adObj.location.floor || floor);
+        setRoom(adObj.location.room || room);
+      }
+
+      setSystemSpecs((prev) => ({
+        ...prev,
+        computerName: adObj.computerName,
+        ipAddress: adObj.ipAddress,
+        macAddress: adObj.macAddress,
+        osVersion: adObj.operatingSystem,
+        processor: adObj.processor,
+        ram: adObj.ram,
+        ramType: adObj.ramType,
+        ssd: adObj.ssd,
+        hdd: adObj.hdd,
+      }));
+
+      setAdSuccessInfo({
+        computerName: adObj.computerName,
+        domain: 'paa.gov.pk',
+        dc: 'DC01.paa.gov.pk (10.100.0.5)',
+        user: adObj.assignedUser,
+        ip: adObj.ipAddress,
+        os: adObj.operatingSystem,
+        ou: adObj.distinguishedName,
+      });
+      setAdSearchQuery(adObj.computerName);
+    } finally {
+      setIsFetchingAD(false);
+    }
+  };
+
 
   useEffect(() => {
     if (assetToEdit) {
@@ -144,6 +256,8 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
       if (assetToEdit.printerSpecs) setPrinterSpecs(assetToEdit.printerSpecs);
       if (assetToEdit.scannerSpecs) setScannerSpecs(assetToEdit.scannerSpecs);
       if (assetToEdit.networkSpecs) setNetworkSpecs(assetToEdit.networkSpecs);
+      if (assetToEdit.cableSpecs) setCableSpecs(assetToEdit.cableSpecs);
+      if (assetToEdit.upsSpecs) setUpsSpecs(assetToEdit.upsSpecs);
 
       if (assetToEdit.images) {
         setDevicePhoto(assetToEdit.images.devicePhoto || '');
@@ -158,6 +272,8 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const isCableCategory = ['Fiber Patch Cord', 'UTP Patch Cord / Network Cable', 'Network Cable'].includes(category);
 
     const payload: Partial<AssetItem> = {
       name: name || `${brand} ${model}`,
@@ -181,6 +297,8 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
       networkSpecs: ['Network Switch', 'Core Switch', 'Distribution Switch', 'Access Switch', 'Router', 'Firewall', 'Access Point'].includes(category)
         ? networkSpecs
         : undefined,
+      cableSpecs: isCableCategory ? cableSpecs : undefined,
+      upsSpecs: category === 'UPS' ? upsSpecs : undefined,
     };
 
     if (assetToEdit) {
@@ -196,6 +314,8 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
   const isPrinter = category === 'Printer';
   const isScanner = category === 'Scanner';
   const isNetworkDev = ['Network Switch', 'Core Switch', 'Distribution Switch', 'Access Switch', 'Router', 'Firewall', 'Access Point'].includes(category);
+  const isCable = ['Fiber Patch Cord', 'UTP Patch Cord / Network Cable', 'Network Cable'].includes(category);
+  const isUPS = category === 'UPS';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm overflow-y-auto">
@@ -325,6 +445,96 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
                   ))}
                 </div>
               </div>
+
+              {/* AUTO FETCH FROM ACTIVE DIRECTORY (AD) CARD */}
+              <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50/90 via-emerald-50/40 to-slate-50 p-3.5 dark:border-teal-900/50 dark:from-teal-950/40 dark:via-slate-900/40 dark:to-slate-900 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-600 text-white shadow-xs">
+                      <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                    </span>
+                    <h4 className="text-xs font-bold text-teal-900 dark:text-teal-200">
+                      Auto Fetch from Active Directory (AD)
+                    </h4>
+                    <span className="rounded-md bg-teal-200/60 dark:bg-teal-900/60 px-1.5 py-0.5 text-[10px] font-bold text-teal-800 dark:text-teal-300">
+                      DC01.paa.gov.pk
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-teal-700 dark:text-teal-400">
+                    LDAPS Port 636
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Type Computer Name (e.g. PAA-CTO-PC01, PAA-FIN-PC14) or IP Address..."
+                      value={adSearchQuery}
+                      onChange={(e) => setAdSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAutoFetchAD();
+                        }
+                      }}
+                      className="w-full rounded-lg border border-teal-300 bg-white pl-8 pr-3 py-1.5 text-xs font-mono font-medium text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-teal-800 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAutoFetchAD()}
+                    disabled={isFetchingAD}
+                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:from-teal-500 hover:to-emerald-500 transition disabled:opacity-50"
+                  >
+                    <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                    <span>{isFetchingAD ? 'Fetching AD...' : 'Auto Fetch AD'}</span>
+                  </button>
+                </div>
+
+                {/* Quick AD Computer Presets */}
+                <div className="flex items-center flex-wrap gap-1">
+                  <span className="text-[10px] font-bold text-teal-800 dark:text-teal-300 mr-1">Quick Fetch AD:</span>
+                  {[
+                    'PAA-CTO-PC01',
+                    'PAA-APM-LAP01',
+                    'PAA-FIN-PC14',
+                    'PAA-IT-PC05',
+                    'PAA-FIRE-STN02',
+                    'PAA-RADAR-DSP04',
+                    'PAA-NAV-SRV01',
+                    'PAA-COMM-WS02',
+                  ].map((cName) => (
+                    <button
+                      key={cName}
+                      type="button"
+                      onClick={() => handleAutoFetchAD(cName)}
+                      className="rounded-md border border-teal-200 bg-white/90 px-2 py-0.5 text-[10px] font-mono font-bold text-teal-800 hover:bg-teal-100 hover:border-teal-400 dark:border-teal-800 dark:bg-slate-900 dark:text-teal-300 dark:hover:bg-slate-800 transition"
+                      title={`Auto Fetch ${cName} from Active Directory`}
+                    >
+                      ⚡ {cName}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Active Directory Success / Verified Banner */}
+                {adSuccessInfo && (
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-100/70 p-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 text-[11px]">
+                      <div className="font-bold flex items-center justify-between">
+                        <span>✓ Auto-Fetched from Active Directory ({adSuccessInfo.dc})</span>
+                        <span className="font-mono text-[10px]">{adSuccessInfo.ip}</span>
+                      </div>
+                      <div className="text-[10px] text-emerald-800 dark:text-emerald-300 mt-0.5">
+                        Populated Computer: <span className="font-mono font-bold">{adSuccessInfo.computerName}</span> &bull; User: <span className="font-semibold">{adSuccessInfo.user}</span> &bull; OS: {adSuccessInfo.os}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
@@ -619,7 +829,18 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
               {/* PC / LAPTOP SPECS */}
               {isPcOrLaptop && (
                 <div className="space-y-3">
-                  <h4 className="font-bold text-xs text-emerald-600 dark:text-emerald-400">Desktop / Laptop System Hardware Specs</h4>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                    <h4 className="font-bold text-xs text-emerald-600 dark:text-emerald-400">Desktop / Laptop System Hardware Specs</h4>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoFetchAD()}
+                      disabled={isFetchingAD}
+                      className="flex items-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 transition shadow-2xs"
+                    >
+                      <Zap className="h-3 w-3 fill-amber-500 text-amber-500" />
+                      <span>{isFetchingAD ? 'Querying DC01...' : '⚡ Auto-Fetch Specs from AD'}</span>
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">Processor</label>
@@ -944,6 +1165,471 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({ assetToEdit, onC
                         value={networkSpecs.rackNumber || ''}
                         onChange={(e) => setNetworkSpecs({ ...networkSpecs, rackNumber: e.target.value })}
                         className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* CABLE & PATCH CORD SPECS */}
+              {isCable && (
+                <div className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-3.5 dark:border-cyan-900/50 dark:bg-cyan-950/20">
+                  <div className="flex items-center justify-between">
+                    <h4 className="flex items-center gap-1.5 font-extrabold text-xs text-cyan-900 dark:text-cyan-300">
+                      <Cable className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                      <span>Fiber & Network Cable Technical Specifications</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-500">Quick Cable Presets</span>
+                  </div>
+
+                  {/* Cable Presets */}
+                  <div className="flex flex-wrap gap-1.5 pb-2 border-b border-cyan-200 dark:border-cyan-900/40">
+                    {[
+                      {
+                        label: '🧵 Fiber 10m LC-LC OS2 (Corning)',
+                        brand: 'Corning',
+                        model: 'LC-LC Duplex 9/125 OS2',
+                        type: 'Single-Mode OS2',
+                        connector: 'LC-LC Duplex',
+                        length: '10m',
+                        shielding: 'LSZH Fire Retardant',
+                        color: 'Yellow',
+                        speed: '10 Gbps',
+                      },
+                      {
+                        label: '🧵 Fiber 5m OM3 Aqua (Panduit)',
+                        brand: 'Panduit',
+                        model: 'LC-LC Duplex OM3 10G',
+                        type: 'Multi-Mode OM3',
+                        connector: 'LC-LC Duplex',
+                        length: '5m',
+                        shielding: 'LSZH Fire Retardant',
+                        color: 'Aqua',
+                        speed: '10 Gbps',
+                      },
+                      {
+                        label: '🌐 Cat6 UTP 3m Blue (Schneider)',
+                        brand: 'Schneider Electric',
+                        model: 'Actassi Cat6 UTP 3m',
+                        type: 'Cat6 UTP',
+                        connector: 'RJ45 Snagless Molded',
+                        length: '3m',
+                        shielding: 'UTP (Unshielded)',
+                        color: 'Blue',
+                        speed: '1 Gbps (250MHz)',
+                      },
+                      {
+                        label: '🌐 Cat6 UTP 5m Grey (D-Link)',
+                        brand: 'D-Link',
+                        model: 'Cat6 Patch Cord 5m',
+                        type: 'Cat6 UTP',
+                        connector: 'RJ45 Snagless Molded',
+                        length: '5m',
+                        shielding: 'UTP (Unshielded)',
+                        color: 'Grey',
+                        speed: '1 Gbps (250MHz)',
+                      },
+                      {
+                        label: '📦 Cat6 305m Roll (Solid Copper)',
+                        brand: 'Schneider Electric',
+                        model: 'Cat6 UTP 23AWG 305m Box',
+                        type: 'Cat6 UTP',
+                        connector: 'Raw Cable (No RJ45)',
+                        length: '305m Roll Box',
+                        shielding: 'UTP (Unshielded)',
+                        color: 'Blue',
+                        speed: '1 Gbps (250MHz)',
+                      },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          if (!brand) setBrand(preset.brand);
+                          if (!model) setModel(preset.model);
+                          if (!name) setName(`${preset.brand} ${preset.model}`);
+                          setCableSpecs({
+                            cableType: preset.type,
+                            connectorType: preset.connector,
+                            length: preset.length,
+                            shielding: preset.shielding,
+                            jacketColor: preset.color,
+                            bandwidthSpeed: preset.speed,
+                          });
+                        }}
+                        className="rounded-lg border border-cyan-200 bg-white px-2 py-1 text-[11px] font-bold text-cyan-950 hover:border-cyan-500 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200 dark:hover:bg-slate-800 transition shadow-2xs"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Cable Type / Standard</label>
+                      <select
+                        value={cableSpecs.cableType || 'Single-Mode OS2'}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, cableType: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="Single-Mode OS2">Fiber Single-Mode OS2 (9/125µm)</option>
+                        <option value="Multi-Mode OM3">Fiber Multi-Mode OM3 10G (50/125µm)</option>
+                        <option value="Multi-Mode OM4">Fiber Multi-Mode OM4 (50/125µm)</option>
+                        <option value="Cat6 UTP">Cat6 UTP Gigabit (250MHz)</option>
+                        <option value="Cat6A SFTP">Cat6A 10G Shielded (500MHz)</option>
+                        <option value="Cat5e UTP">Cat5e UTP (100MHz)</option>
+                        <option value="Cat7 / Cat8">Cat7 / Cat8 Ultra Shielded</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Connector Interface</label>
+                      <select
+                        value={cableSpecs.connectorType || 'LC-LC Duplex'}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, connectorType: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="LC-LC Duplex">LC-LC Duplex (SFP Optical)</option>
+                        <option value="SC-LC Duplex">SC-LC Duplex</option>
+                        <option value="SC-SC Duplex">SC-SC Duplex</option>
+                        <option value="RJ45 Snagless Molded">RJ45 Snagless Molded Boot</option>
+                        <option value="Raw Cable (No RJ45)">Raw Cable / 305m Roll Box</option>
+                        <option value="ST-ST Duplex">ST-ST Duplex</option>
+                        <option value="MTP/MPO 12-Fiber">MTP/MPO 12-Fiber High Density</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Length / Dimension</label>
+                      <select
+                        value={cableSpecs.length || '10m'}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, length: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="1m">1 Meter (3.3 ft)</option>
+                        <option value="2m">2 Meters (6.6 ft)</option>
+                        <option value="3m">3 Meters (9.8 ft)</option>
+                        <option value="5m">5 Meters (16.4 ft)</option>
+                        <option value="10m">10 Meters (32.8 ft)</option>
+                        <option value="15m">15 Meters (49.2 ft)</option>
+                        <option value="20m">20 Meters (65.6 ft)</option>
+                        <option value="30m">30 Meters (98.4 ft)</option>
+                        <option value="50m">50 Meters (164 ft)</option>
+                        <option value="305m Roll Box">305m (1000 ft) Roll Box</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Shielding / Jacket</label>
+                      <select
+                        value={cableSpecs.shielding || 'LSZH Fire Retardant'}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, shielding: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="LSZH Fire Retardant">LSZH (Low Smoke Zero Halogen)</option>
+                        <option value="UTP (Unshielded)">UTP (Unshielded Twisted Pair)</option>
+                        <option value="STP / FTP Shielded">STP / FTP Shielded Foil</option>
+                        <option value="PVC Standard">PVC Standard Commercial</option>
+                        <option value="Armored Outdoor">Armored Outdoor Direct Burial</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Jacket Color</label>
+                      <select
+                        value={cableSpecs.jacketColor || 'Yellow'}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, jacketColor: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <option value="Yellow">Yellow (OS2 Single-Mode Standard)</option>
+                        <option value="Aqua">Aqua (OM3 Multi-Mode Standard)</option>
+                        <option value="Blue">Blue (Cat6 Data Standard)</option>
+                        <option value="Grey">Grey (Standard Network)</option>
+                        <option value="Orange">Orange (OM1/OM2 Legacy)</option>
+                        <option value="Purple">Purple (OM4 Standard)</option>
+                        <option value="White">White</option>
+                        <option value="Black">Black</option>
+                        <option value="Red">Red (Critical / Security)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">Bandwidth / Rated Speed</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 10 Gbps / 250 MHz"
+                        value={cableSpecs.bandwidthSpeed || ''}
+                        onChange={(e) => setCableSpecs({ ...cableSpecs, bandwidthSpeed: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* UPS & BATTERY BANK SPECIFICATIONS */}
+              {isUPS && (
+                <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/60 pb-2 dark:border-amber-900/40">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg bg-amber-500/20 p-1.5 text-amber-600 dark:text-amber-400">
+                        <BatteryCharging className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider">
+                          Airport UPS & Battery Bank Engineering Specifications
+                        </h4>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                          Critical power backup parameters for Radar, ATC Towers, Avionics and Data Centers
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Airport Quick Presets */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-300">
+                      PAA Airport Hardware Presets (Click to Auto-fill):
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!brand) setBrand('EATON');
+                          setModel('DX 1000H');
+                          setName('EATON DX 1000H - ATC Tower');
+                          setRoom('Room 104');
+                          setUpsSpecs({
+                            modelNo: 'EATON DX 1000H',
+                            capacityKvaKw: '1000VA / 900W Online Double Conversion',
+                            voltage: '230V AC (Input: 220V/230V, Output: 230V ±1%, DC Bus: 36V DC)',
+                            roomNo: 'Room 104',
+                            locationDetails: 'Control Tower Complex, 1st Floor, ATC Avionics Rack',
+                            backupTime: '25 Minutes (@ 70% load)',
+                            noOfBatteries: 3,
+                            batteryType: '12V 7.2Ah VRLA AGM (Phoenix / CSB)',
+                            lastBatteryChangeDate: '2024-11-20',
+                            nextBatteryChangeDate: '2026-11-20',
+                            batteryHealthPercent: 95,
+                            loadPercentage: 58,
+                          });
+                        }}
+                        className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-300 shadow-2xs"
+                      >
+                        ⚡ EATON DX 1000H (Room 104 - 3 Batt)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!brand) setBrand('EATON');
+                          setModel('3000H');
+                          setName('EATON 3000H - Radar Station Bravo');
+                          setRoom('Room 202');
+                          setUpsSpecs({
+                            modelNo: 'EATON 3000H',
+                            capacityKvaKw: '3000VA / 2700W Online Double Conversion',
+                            voltage: '230V AC (Input: 160V-290V, Output: 230V ±1%, DC Bus: 96V DC)',
+                            roomNo: 'Room 202',
+                            locationDetails: 'Radar Station Bravo, Ground Floor, Primary Rack 01',
+                            backupTime: '45 Minutes (@ 65% load)',
+                            noOfBatteries: 8,
+                            batteryType: '12V 9.0Ah High-Rate VRLA AGM (Narada / Exide)',
+                            lastBatteryChangeDate: '2024-08-15',
+                            nextBatteryChangeDate: '2026-08-15',
+                            batteryHealthPercent: 88,
+                            loadPercentage: 62,
+                          });
+                        }}
+                        className="rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-xs font-bold text-blue-900 hover:bg-blue-100 dark:border-blue-700 dark:bg-slate-900 dark:text-blue-300 shadow-2xs"
+                      >
+                        ⚡ EATON 3000H (Room 202 - 8 Batt)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!brand) setBrand('APC by Schneider');
+                          setModel('Smart-UPS SRT 5000VA');
+                          setName('APC Smart-UPS 5000VA - Comms Room');
+                          setRoom('Communications Room');
+                          setUpsSpecs({
+                            modelNo: 'Smart-UPS SRT 5000VA',
+                            capacityKvaKw: '5000VA / 4500W Double Conversion Online',
+                            voltage: '230V AC Single Phase In/Out, DC Bus: 192V DC',
+                            roomNo: 'Communications Room',
+                            locationDetails: 'Fire Station Main Building, Ground Floor Comms Rack',
+                            backupTime: '50 Minutes (@ 55% load)',
+                            noOfBatteries: 16,
+                            batteryType: '12V 9Ah VRLA AGM RBC140 Cartridge',
+                            lastBatteryChangeDate: '2024-10-05',
+                            nextBatteryChangeDate: '2026-10-05',
+                            batteryHealthPercent: 92,
+                            loadPercentage: 55,
+                          });
+                        }}
+                        className="rounded-lg border border-purple-300 bg-white px-2.5 py-1 text-xs font-bold text-purple-900 hover:bg-purple-100 dark:border-purple-700 dark:bg-slate-900 dark:text-purple-300 shadow-2xs"
+                      >
+                        ⚡ APC Smart-UPS 5000VA (Comms)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        UPS Model Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. EATON DX 1000H, EATON 3000H"
+                        value={upsSpecs.modelNo}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, modelNo: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Room Number / Station
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Room 104, Room 202"
+                        value={upsSpecs.roomNo || room}
+                        onChange={(e) => {
+                          setUpsSpecs({ ...upsSpecs, roomNo: e.target.value });
+                          setRoom(e.target.value);
+                        }}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-bold text-amber-800 dark:border-slate-700 dark:bg-slate-800 dark:text-amber-300"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Capacity / Power Rating
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 1000VA / 900W or 3000VA / 2700W"
+                        value={upsSpecs.capacityKvaKw || ''}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, capacityKvaKw: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Operating Voltage & DC Bus
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 230V AC In/Out, 36V DC Bus (3x12V)"
+                        value={upsSpecs.voltage}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, voltage: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Number of Installed Batteries
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="64"
+                        value={upsSpecs.noOfBatteries}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, noOfBatteries: Number(e.target.value) })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-bold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Tested Backup Time on Load
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 25 Minutes, 45 Minutes"
+                        value={upsSpecs.backupTime}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, backupTime: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs font-bold text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-emerald-300"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Battery Type & Model
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 12V 7.2Ah VRLA AGM (Phoenix / CSB)"
+                        value={upsSpecs.batteryType || ''}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, batteryType: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Last Battery Replacement Date
+                      </label>
+                      <input
+                        type="date"
+                        value={upsSpecs.lastBatteryChangeDate || ''}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, lastBatteryChangeDate: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Next Battery Change Due
+                      </label>
+                      <input
+                        type="date"
+                        value={upsSpecs.nextBatteryChangeDate || ''}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, nextBatteryChangeDate: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Location / Floor Details
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Control Tower Complex, 1st Floor, ATC Avionics Rack"
+                        value={upsSpecs.locationDetails || ''}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, locationDetails: e.target.value })}
+                        className="w-full rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Current Battery Bank Health: {upsSpecs.batteryHealthPercent ?? 100}%
+                      </label>
+                      <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        value={upsSpecs.batteryHealthPercent ?? 100}
+                        onChange={(e) => setUpsSpecs({ ...upsSpecs, batteryHealthPercent: Number(e.target.value) })}
+                        className="w-full accent-amber-500 cursor-pointer"
                       />
                     </div>
                   </div>

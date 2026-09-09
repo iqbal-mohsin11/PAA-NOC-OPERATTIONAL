@@ -26,6 +26,9 @@ import {
   RotateCw,
   RefreshCw,
   Package,
+  BatteryCharging,
+  Zap,
+  Clock,
 } from 'lucide-react';
 
 interface AssetDetailModalProps {
@@ -37,6 +40,7 @@ interface AssetDetailModalProps {
   onOpenIssueModal: (asset: AssetItem) => void;
   onOpenGatePass?: (asset: AssetItem) => void;
   onOpenTonerIssue?: (asset: AssetItem, mode?: 'new' | 'refill') => void;
+  onOpenUPSMaintenance?: (asset: AssetItem) => void;
 }
 
 export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
@@ -48,15 +52,18 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   onOpenIssueModal,
   onOpenGatePass,
   onOpenTonerIssue,
+  onOpenUPSMaintenance,
 }) => {
-  const { tickets, maintenanceRecords, updateAsset } = useInventory();
+  const { tickets, maintenanceRecords, upsMaintenanceRecords, updateAsset } = useInventory();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'specs' | 'tickets' | 'maintenance'>('overview');
 
   const assetTickets = tickets.filter((t) => t.assetId === asset.id);
   const assetMaintenance = maintenanceRecords.filter((m) => m.assetId === asset.id);
+  const assetUPSMaintenance = upsMaintenanceRecords.filter((u) => u.assetId === asset.id);
 
   const isPrinterAsset = asset.category === 'Printer' || !!asset.printerSpecs;
+  const isUPSAsset = asset.category === 'UPS' || !!asset.upsSpecs;
   const currentTonerLevel = asset.printerSpecs?.tonerLevel ?? 100;
 
   const handleQuickPresetToner = (tonerModelStr: string) => {
@@ -419,6 +426,77 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                   </div>
                 )}
 
+                {/* UPS & Battery Specific Block */}
+                {isUPSAsset && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/60 dark:bg-amber-950/30 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/60 pb-2.5 dark:border-amber-900/40">
+                      <div className="flex items-center gap-2">
+                        <div className="rounded-lg bg-amber-500/20 p-1.5 text-amber-600 dark:text-amber-400">
+                          <BatteryCharging className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-amber-900 dark:text-amber-200 text-sm">
+                              Airport UPS & Battery System
+                            </h4>
+                            <span className="rounded-md bg-amber-500/20 px-1.5 py-0.5 font-mono text-[11px] font-extrabold text-amber-800 dark:text-amber-300">
+                              {asset.upsSpecs?.roomNo || asset.location?.room || 'Room N/A'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                            Model: <span className="font-bold">{asset.upsSpecs?.modelNo || asset.model}</span> • Tested Backup: <span className="font-bold text-emerald-700 dark:text-emerald-300">{asset.upsSpecs?.backupTime || '25-45 Minutes'}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {onOpenUPSMaintenance && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenUPSMaintenance(asset)}
+                          className="flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-amber-500 transition"
+                        >
+                          <BatteryCharging className="h-4 w-4" />
+                          <span>Log UPS Maintenance & Battery</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="rounded-xl bg-white/80 p-2.5 dark:bg-slate-900/60 border border-amber-200/50 dark:border-amber-900/30">
+                        <span className="text-[11px] text-slate-400">Battery Bank</span>
+                        <div className="font-extrabold text-amber-600 dark:text-amber-400 text-sm mt-0.5">
+                          {asset.upsSpecs?.noOfBatteries || (asset.model.includes('3000') ? 8 : 3)} Cells
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">{asset.upsSpecs?.batteryType || '12V VRLA AGM'}</div>
+                      </div>
+
+                      <div className="rounded-xl bg-white/80 p-2.5 dark:bg-slate-900/60 border border-amber-200/50 dark:border-amber-900/30">
+                        <span className="text-[11px] text-slate-400">Voltage Bus</span>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 text-xs mt-0.5 truncate">
+                          {asset.upsSpecs?.voltage || (asset.model.includes('3000') ? '96V DC Bus' : '36V DC Bus')}
+                        </div>
+                        <div className="text-[10px] text-slate-500">230V AC ±1% In/Out</div>
+                      </div>
+
+                      <div className="rounded-xl bg-white/80 p-2.5 dark:bg-slate-900/60 border border-amber-200/50 dark:border-amber-900/30">
+                        <span className="text-[11px] text-slate-400">Last Battery Change</span>
+                        <div className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs mt-0.5">
+                          {asset.upsSpecs?.lastBatteryChangeDate || asset.lastMaintenanceDate || '2024-11-20'}
+                        </div>
+                        <div className="text-[10px] text-emerald-600">Replaced & Tested</div>
+                      </div>
+
+                      <div className="rounded-xl bg-white/80 p-2.5 dark:bg-slate-900/60 border border-amber-200/50 dark:border-amber-900/30">
+                        <span className="text-[11px] text-slate-400">Next Replacement Due</span>
+                        <div className="font-mono font-bold text-amber-700 dark:text-amber-400 text-xs mt-0.5">
+                          {asset.upsSpecs?.nextBatteryChangeDate || '2026-11-20'}
+                        </div>
+                        <div className="text-[10px] text-slate-500">24-Month Cycle</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
                   <div>
                     <span className="text-slate-400">Purchase Date</span>
@@ -514,6 +592,53 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {asset.upsSpecs && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+                  <h4 className="font-bold text-amber-700 dark:text-amber-400 mb-3 text-sm flex items-center gap-2">
+                    <BatteryCharging className="h-4 w-4" />
+                    <span>Airport UPS & Battery Bank Specifications</span>
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <span className="text-slate-400">Model Number:</span>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">{asset.upsSpecs.modelNo}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Power Rating:</span>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">{asset.upsSpecs.capacityKvaKw || 'Standard'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Room Number:</span>
+                      <div className="font-bold text-amber-700 dark:text-amber-400">{asset.upsSpecs.roomNo || asset.location?.room || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Tested Backup Time:</span>
+                      <div className="font-bold text-emerald-600 dark:text-emerald-400">{asset.upsSpecs.backupTime}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Battery Bank:</span>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">{asset.upsSpecs.noOfBatteries}x {asset.upsSpecs.batteryType || 'VRLA AGM'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Voltage Bus:</span>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">{asset.upsSpecs.voltage}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Last Battery Change:</span>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">{asset.upsSpecs.lastBatteryChangeDate || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Next Scheduled Change:</span>
+                      <div className="font-mono font-bold text-amber-700 dark:text-amber-400">{asset.upsSpecs.nextBatteryChangeDate || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Battery Health:</span>
+                      <div className="font-bold text-emerald-600">{asset.upsSpecs.batteryHealthPercent ?? 95}%</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -546,21 +671,51 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
           )}
 
           {activeTab === 'maintenance' && (
-            <div className="space-y-3">
-              <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200 mb-2">Service Maintenance Log Records</h4>
-              {assetMaintenance.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl">No maintenance history recorded yet.</div>
-              ) : (
-                assetMaintenance.map((m) => (
-                  <div key={m.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50 text-xs dark:border-slate-800 dark:bg-slate-800/50">
-                    <div className="flex justify-between font-bold text-slate-800 dark:text-slate-200">
-                      <span>{m.id} - {m.date}</span>
-                      <span className="text-emerald-600">PKR {m.cost.toLocaleString()}</span>
+            <div className="space-y-4">
+              {assetUPSMaintenance.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                    <BatteryCharging className="h-4 w-4 text-amber-600" />
+                    <span>UPS Specific Battery & Service History ({assetUPSMaintenance.length})</span>
+                  </h4>
+                  {assetUPSMaintenance.map((u) => (
+                    <div key={u.id} className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 text-xs dark:border-amber-900/40 dark:bg-amber-950/20 space-y-1.5">
+                      <div className="flex justify-between font-bold text-slate-800 dark:text-slate-200">
+                        <span className="font-mono text-amber-700 dark:text-amber-400">{u.id} • {u.maintenanceDate}</span>
+                        <span className="text-emerald-600 font-mono">PKR {u.cost?.toLocaleString() || 0}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+                        <span><strong>Bank:</strong> {u.noOfBatteries}x ({u.voltage})</span>
+                        <span>•</span>
+                        <span><strong>Tested Backup:</strong> {u.backupTime}</span>
+                        <span>•</span>
+                        <span><strong>Condition:</strong> {u.batteryCondition}</span>
+                      </div>
+                      <p className="text-slate-600 dark:text-slate-300">{u.description}</p>
+                      <div className="text-[11px] text-slate-400">
+                        Engineer: {u.engineer} {u.nextBatteryChangeDate ? `| Next Replacement: ${u.nextBatteryChangeDate}` : ''}
+                      </div>
                     </div>
-                    <p className="mt-1 text-slate-600 dark:text-slate-300">{m.description}</p>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-slate-800 dark:text-slate-200">Standard Service Log Records</h4>
+                {assetMaintenance.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl dark:bg-slate-800/40">No general maintenance history recorded yet.</div>
+                ) : (
+                  assetMaintenance.map((m) => (
+                    <div key={m.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50 text-xs dark:border-slate-800 dark:bg-slate-800/50">
+                      <div className="flex justify-between font-bold text-slate-800 dark:text-slate-200">
+                        <span>{m.id} - {m.date}</span>
+                        <span className="text-emerald-600">PKR {m.cost.toLocaleString()}</span>
+                      </div>
+                      <p className="mt-1 text-slate-600 dark:text-slate-300">{m.description}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -606,6 +761,19 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                   <span>Issue New Toner</span>
                 </button>
               </>
+            )}
+
+            {isUPSAsset && onOpenUPSMaintenance && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenUPSMaintenance(asset);
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-amber-500 shadow-md transition"
+              >
+                <BatteryCharging className="h-4 w-4" />
+                <span>Log UPS Maintenance & Battery</span>
+              </button>
             )}
 
             {onOpenGatePass && (

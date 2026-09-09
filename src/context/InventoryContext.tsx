@@ -12,11 +12,13 @@ import {
   TonerIssueRecord,
   GatePassRecord,
   LogisticsReceivingRecord,
+  UPSMaintenanceRecord,
 } from '../types/inventory';
 import {
   initialAssets,
   initialTickets,
   initialMaintenanceRecords,
+  initialUPSMaintenanceRecords,
   initialAuditLogs,
   initialFacilities,
   initialSettings,
@@ -24,6 +26,7 @@ import {
   initialGatePassRecords,
   initialLogisticsReceivingRecords,
 } from '../data/mockData';
+import { initialAIIAPUpsAssets } from '../data/aiiapUpsData';
 
 export interface RolePasswords {
   Administrator: string;
@@ -55,6 +58,7 @@ interface InventoryContextType {
   tonerIssueRecords: TonerIssueRecord[];
   gatePassRecords: GatePassRecord[];
   logisticsReceivingRecords: LogisticsReceivingRecord[];
+  upsMaintenanceRecords: UPSMaintenanceRecord[];
   auditLogs: AuditLog[];
   facilities: AirportFacility[];
   settings: OrganizationSettings;
@@ -96,6 +100,8 @@ interface InventoryContextType {
   updateTicketStatus: (ticketNumber: string, status: IssueTicket['status'], resolution?: string, closedDate?: string) => void;
 
   addMaintenanceRecord: (record: Omit<MaintenanceRecord, 'id'>) => void;
+  addUPSMaintenanceRecord: (record: Omit<UPSMaintenanceRecord, 'id' | 'createdAt'>, updateAssetSpecs?: boolean) => UPSMaintenanceRecord;
+  updateUPSMaintenanceRecord: (id: string, updates: Partial<UPSMaintenanceRecord>) => void;
   addTonerIssueRecord: (record: Omit<TonerIssueRecord, 'id'>, updatePrinterLevel?: boolean) => void;
   addGatePassRecord: (record: Omit<GatePassRecord, 'id'>) => void;
   updateGatePassStatus: (id: string, status: GatePassRecord['status'], actualReturnDate?: string, securityCleared?: string) => void;
@@ -103,6 +109,7 @@ interface InventoryContextType {
 
   updateSettings: (newSettings: Partial<OrganizationSettings>) => void;
   bulkImportAssets: (newAssets: AssetItem[]) => void;
+  loadAIIAPUpsFleet: () => void;
   exportDatabaseJson: () => void;
   importDatabaseJson: (jsonString: string) => boolean;
   resetToDefaultData: () => void;
@@ -160,6 +167,13 @@ export const allPaaBrands: string[] = [
   'Lenovo',
   'Fortinet',
   'APC Schneider Electric',
+  'Schneider Electric',
+  'EATON',
+  'Corning',
+  'Panduit',
+  'CommScope / AMP',
+  'D-Link',
+  'Hikvision',
   'Fujitsu',
   'Zebra',
   'Epson',
@@ -206,6 +220,9 @@ export const allPaaCategories: string[] = [
   'UPS',
   'Rack',
   'Patch Panel',
+  'Fiber Patch Cord',
+  'UTP Patch Cord / Network Cable',
+  'Network Cable',
   'IP Phone',
   'Monitor',
   'NAS Storage',
@@ -232,7 +249,12 @@ export const defaultRolePasswords: RolePasswords = {
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assets, setAssets] = useState<AssetItem[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_assets`);
-    const initial: AssetItem[] = saved ? JSON.parse(saved) : initialAssets;
+    let initial: AssetItem[] = saved ? JSON.parse(saved) : initialAssets;
+    const existingTags = new Set(initial.map((a) => a.assetTag?.toLowerCase()));
+    const missingUps = initialAIIAPUpsAssets.filter((a) => !existingTags.has(a.assetTag?.toLowerCase()));
+    if (missingUps.length > 0) {
+      initial = [...initial, ...missingUps];
+    }
     return deduplicateItems<AssetItem>(initial, (a) => a.id);
   });
 
@@ -264,6 +286,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_receiving_records`);
     const initial: LogisticsReceivingRecord[] = saved ? JSON.parse(saved) : initialLogisticsReceivingRecords;
     return deduplicateItems<LogisticsReceivingRecord>(initial, (rc) => rc.id);
+  });
+
+  const [upsMaintenanceRecords, setUpsMaintenanceRecords] = useState<UPSMaintenanceRecord[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_ups_maintenance`);
+    const initial: UPSMaintenanceRecord[] = saved ? JSON.parse(saved) : initialUPSMaintenanceRecords;
+    return deduplicateItems<UPSMaintenanceRecord>(initial, (u) => u.id);
   });
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
@@ -306,7 +334,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return Array.from(new Set([...allPaaBrands, ...parsed]));
+        }
       } catch (e) {
         console.error('Error parsing saved brands', e);
       }
@@ -332,7 +362,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return Array.from(new Set([...allPaaCategories, ...parsed]));
+        }
       } catch (e) {
         console.error('Error parsing saved categories', e);
       }
@@ -420,6 +452,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [logisticsReceivingRecords]);
 
   useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_ups_maintenance`, JSON.stringify(upsMaintenanceRecords));
+  }, [upsMaintenanceRecords]);
+
+  useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_logs`, JSON.stringify(auditLogs));
   }, [auditLogs]);
 
@@ -450,6 +486,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (data.assets && data.assets.length > 0) setAssets(deduplicateItems(data.assets, (a: AssetItem) => a.id));
               if (data.tickets && data.tickets.length > 0) setTickets(deduplicateItems(data.tickets, (t: IssueTicket) => t.ticketNumber));
               if (data.maintenanceRecords && data.maintenanceRecords.length > 0) setMaintenanceRecords(deduplicateItems(data.maintenanceRecords, (m: MaintenanceRecord) => m.id));
+              if (data.upsMaintenanceRecords && data.upsMaintenanceRecords.length > 0) setUpsMaintenanceRecords(deduplicateItems(data.upsMaintenanceRecords, (u: UPSMaintenanceRecord) => u.id));
               if (data.logisticsReceivingRecords && data.logisticsReceivingRecords.length > 0) setLogisticsReceivingRecords(deduplicateItems(data.logisticsReceivingRecords, (l: LogisticsReceivingRecord) => l.id));
               if (data.tonerIssueRecords && data.tonerIssueRecords.length > 0) setTonerIssueRecords(deduplicateItems(data.tonerIssueRecords, (tr: TonerIssueRecord) => tr.id));
               if (data.gatePassRecords && data.gatePassRecords.length > 0) setGatePassRecords(deduplicateItems(data.gatePassRecords, (gp: GatePassRecord) => gp.id));
@@ -893,6 +930,99 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return finalRecord;
   };
 
+  const addUPSMaintenanceRecord = (
+    recordData: Omit<UPSMaintenanceRecord, 'id' | 'createdAt'>,
+    updateAssetSpecs: boolean = true
+  ): UPSMaintenanceRecord => {
+    const num = upsMaintenanceRecords.length + 1;
+    const newRecordId = `PAA-UPS-MNT-2026-${num < 10 ? '00' + num : num < 100 ? '0' + num : num}`;
+    const newRecord: UPSMaintenanceRecord = {
+      ...recordData,
+      id: newRecordId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setUpsMaintenanceRecords((prev) => [newRecord, ...prev]);
+
+    // Also mirror to generic maintenance records
+    const genericMntId = `MNT-2026-U${num < 10 ? '00' + num : num < 100 ? '0' + num : num}`;
+    const genericRecord: MaintenanceRecord = {
+      id: genericMntId,
+      assetId: recordData.assetId,
+      deviceName: recordData.upsName,
+      date: recordData.maintenanceDate,
+      engineer: recordData.engineer,
+      description: `[UPS ${recordData.maintenanceType}] ${recordData.description}`,
+      partsReplaced: `${recordData.noOfBatteries}x Batteries (${recordData.batteryBrandType || 'VRLA'})`,
+      cost: recordData.cost || 0,
+      remarks: `Voltage: ${recordData.voltage} | Backup: ${recordData.backupTime} | Next Due: ${recordData.nextBatteryChangeDate || 'N/A'}`,
+    };
+    setMaintenanceRecords((prev) => [genericRecord, ...prev]);
+
+    if (updateAssetSpecs && recordData.assetId) {
+      setAssets((prev) =>
+        prev.map((a) => {
+          if (a.id === recordData.assetId) {
+            const isWarning = recordData.batteryCondition.includes('Weak') || recordData.batteryCondition.includes('Defective');
+            return {
+              ...a,
+              lastMaintenanceDate: recordData.maintenanceDate,
+              pingStatus: isWarning ? 'Warning' : 'Online',
+              upsSpecs: {
+                ...(a.upsSpecs || {
+                  modelNo: recordData.modelNo,
+                }),
+                modelNo: recordData.modelNo || a.upsSpecs?.modelNo || a.model,
+                voltage: recordData.voltage || a.upsSpecs?.voltage,
+                roomNo: recordData.roomNo || a.upsSpecs?.roomNo || a.location?.room,
+                locationDetails: recordData.location || a.upsSpecs?.locationDetails,
+                backupTime: recordData.backupTime || a.upsSpecs?.backupTime,
+                noOfBatteries: recordData.noOfBatteries || a.upsSpecs?.noOfBatteries,
+                batteryType: recordData.batteryBrandType || a.upsSpecs?.batteryType,
+                lastBatteryChangeDate: recordData.batteryChangeDate,
+                nextBatteryChangeDate: recordData.nextBatteryChangeDate,
+                batteryHealthPercent: recordData.batteryCondition.includes('Optimal')
+                  ? 100
+                  : recordData.batteryCondition.includes('Good')
+                  ? 85
+                  : recordData.batteryCondition.includes('Fair')
+                  ? 65
+                  : recordData.batteryCondition.includes('Weak')
+                  ? 35
+                  : 10,
+                loadPercentage: recordData.loadPercentage ?? a.upsSpecs?.loadPercentage,
+              },
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return a;
+        })
+      );
+    }
+
+    fetch('/api/ups-maintenance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRecord),
+    }).catch(() => {});
+
+    addAuditLog(
+      'UPS Maintenance & Battery Logged',
+      `UPS Service/Battery replacement logged for ${recordData.upsName} (${recordData.modelNo}) - ${recordData.noOfBatteries} batteries, Backup: ${recordData.backupTime}`,
+      recordData.assetId,
+      'success'
+    );
+
+    return newRecord;
+  };
+
+  const updateUPSMaintenanceRecord = (id: string, updates: Partial<UPSMaintenanceRecord>) => {
+    setUpsMaintenanceRecords((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+    );
+    addAuditLog('UPS Maintenance Record Updated', `UPS Maintenance Record ${id} updated`, undefined, 'info');
+  };
+
   const updateSettings = (newSettings: Partial<OrganizationSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
     addAuditLog('Settings Updated', 'Organization system configurations updated', undefined, 'info');
@@ -906,6 +1036,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       body: JSON.stringify({ assets: importedAssets }),
     }).catch(() => {});
     addAuditLog('Bulk Import', `Imported ${importedAssets.length} assets from Excel spreadsheet into database`, undefined, 'success');
+  };
+
+  const loadAIIAPUpsFleet = () => {
+    setAssets((prev) => {
+      const existingTags = new Set(prev.map((a) => a.assetTag?.toLowerCase()));
+      const toAdd = initialAIIAPUpsAssets.filter((a) => !existingTags.has(a.assetTag?.toLowerCase()));
+      if (toAdd.length === 0) return prev;
+      return deduplicateItems<AssetItem>([...prev, ...toAdd], (a) => a.id);
+    });
+    addAuditLog('AIIAP UPS Fleet Loaded', 'Synchronized 20-unit AIIAP UPS & Rack equipment list with kVA details', undefined, 'success');
   };
 
   const exportDatabaseJson = () => {
@@ -1077,6 +1217,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         tonerIssueRecords,
         gatePassRecords,
         logisticsReceivingRecords,
+        upsMaintenanceRecords,
         auditLogs,
         facilities,
         settings,
@@ -1106,12 +1247,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addTicket,
         updateTicketStatus,
         addMaintenanceRecord,
+        addUPSMaintenanceRecord,
+        updateUPSMaintenanceRecord,
         addTonerIssueRecord,
         addGatePassRecord,
         updateGatePassStatus,
         addLogisticsReceivingRecord,
         updateSettings,
         bulkImportAssets,
+        loadAIIAPUpsFleet,
         exportDatabaseJson,
         importDatabaseJson,
         resetToDefaultData,

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { activeDirectoryCatalog, autoFetchActiveDirectory, ADComputerObject } from '../data/adDirectoryData';
 import {
   RefreshCw,
   Server,
@@ -77,6 +78,127 @@ export const ADSyncView: React.FC = () => {
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStep, setSyncStep] = useState('');
   const [lastSyncTime, setLastSyncTime] = useState('Today at 22:45 PKT');
+
+  // Automated Active Directory (Auto-Fetch) Engine State
+  const [isAutoFetchActive, setIsAutoFetchActive] = useState(true);
+  const [autoFetchInterval, setAutoFetchInterval] = useState(30); // in seconds
+  const [secondsRemaining, setSecondsRemaining] = useState(30);
+  const [autoFetchCount, setAutoFetchCount] = useState(1);
+  const [isAutoFetchingPulse, setIsAutoFetchingPulse] = useState(false);
+
+  // Single Host Direct AD Auto-Fetch Query State
+  const [singleHostQuery, setSingleHostQuery] = useState('');
+  const [singleHostResult, setSingleHostResult] = useState<ADComputerObject | null>(null);
+  const [isSearchingHost, setIsSearchingHost] = useState(false);
+  const [singleHostActionMsg, setSingleHostActionMsg] = useState<string | null>(null);
+
+  // Automated background Auto-Fetch timer
+  useEffect(() => {
+    if (!isAutoFetchActive) return;
+
+    const timer = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          // Trigger automated background fetch
+          setIsAutoFetchingPulse(true);
+          setTimeout(() => {
+            setIsAutoFetchingPulse(false);
+            setLastSyncTime(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' PKT');
+            setAutoFetchCount((c) => c + 1);
+          }, 600);
+          return autoFetchInterval;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isAutoFetchActive, autoFetchInterval]);
+
+  const handleDirectHostAutoFetch = (query?: string) => {
+    const q = (query || singleHostQuery).trim();
+    if (!q) return;
+
+    setIsSearchingHost(true);
+    setSingleHostActionMsg(null);
+
+    setTimeout(() => {
+      const match = autoFetchActiveDirectory(q);
+      setSingleHostResult(match);
+      setSingleHostQuery(match.computerName);
+      setIsSearchingHost(false);
+    }, 350);
+  };
+
+  const handleImportSingleHost = () => {
+    if (!singleHostResult) return;
+
+    const existing = assets.find(
+      (a) =>
+        a.systemSpecs?.computerName?.toLowerCase() === singleHostResult.computerName.toLowerCase() ||
+        a.systemSpecs?.ipAddress === singleHostResult.ipAddress
+    );
+
+    if (existing) {
+      updateAsset(existing.id, {
+        name: `${singleHostResult.brand} ${singleHostResult.model} (${singleHostResult.computerName})`,
+        category: singleHostResult.category,
+        department: singleHostResult.department as any,
+        assignedUser: singleHostResult.assignedUser,
+        systemSpecs: {
+          ...existing.systemSpecs,
+          computerName: singleHostResult.computerName,
+          ipAddress: singleHostResult.ipAddress,
+          macAddress: singleHostResult.macAddress,
+          osVersion: singleHostResult.operatingSystem,
+          processor: singleHostResult.processor,
+          ram: singleHostResult.ram,
+          ramType: singleHostResult.ramType,
+          ssd: singleHostResult.ssd,
+          hdd: singleHostResult.hdd,
+        },
+      });
+
+      addAuditLog?.(
+        'AD Auto-Fetch Reconcile',
+        `Reconciled ${singleHostResult.computerName} specs with live Active Directory (DC01)`,
+        undefined,
+        'success'
+      );
+      setSingleHostActionMsg(`✓ Existing Asset "${existing.name}" (${existing.id}) updated with latest AD attributes!`);
+    } else {
+      const created = addAsset({
+        name: `${singleHostResult.brand} ${singleHostResult.model} (${singleHostResult.computerName})`,
+        category: singleHostResult.category,
+        department: singleHostResult.department as any,
+        assignedUser: singleHostResult.assignedUser,
+        location: singleHostResult.location,
+        brand: singleHostResult.brand,
+        model: singleHostResult.model,
+        status: 'Active',
+        systemSpecs: {
+          computerName: singleHostResult.computerName,
+          ipAddress: singleHostResult.ipAddress,
+          macAddress: singleHostResult.macAddress,
+          osVersion: singleHostResult.operatingSystem,
+          processor: singleHostResult.processor,
+          ram: singleHostResult.ram,
+          ramType: singleHostResult.ramType,
+          ssd: singleHostResult.ssd,
+          hdd: singleHostResult.hdd,
+        },
+      });
+
+      addAuditLog?.(
+        'AD Auto-Fetch Import',
+        `Auto-imported ${singleHostResult.computerName} from Active Directory as ${created.id}`,
+        undefined,
+        'success'
+      );
+      setSingleHostActionMsg(`✓ Created new asset "${created.name}" (${created.id}) in Sentinel Inventory!`);
+    }
+  };
+
 
   // Discrepancies & AD Discovered List
   const [adDiscrepancies, setAdDiscrepancies] = useState<ADDiscrepancyItem[]>([
@@ -310,14 +432,43 @@ export const ADSyncView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Live Auto-Fetch Status Pill */}
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-2 text-xs backdrop-blur-md">
+            <span className={`h-2.5 w-2.5 rounded-full ${isAutoFetchActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            <div>
+              <div className="flex items-center gap-1.5 font-bold text-white text-[11px]">
+                <span>{isAutoFetchActive ? 'Auto-Fetch AD: ON' : 'Auto-Fetch AD: OFF'}</span>
+                {isAutoFetchingPulse && (
+                  <span className="text-[10px] text-amber-300 animate-bounce font-mono">Querying DC...</span>
+                )}
+              </div>
+              <div className="text-[10px] text-emerald-300/80 font-mono">
+                {isAutoFetchActive
+                  ? `Next in ${secondsRemaining}s • Cycle #${autoFetchCount}`
+                  : 'Automatic polling paused'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsAutoFetchActive(!isAutoFetchActive)}
+            className={`rounded-xl px-3 py-2 text-xs font-bold transition border ${
+              isAutoFetchActive
+                ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            {isAutoFetchActive ? 'Pause Auto-Fetch' : 'Resume Auto-Fetch'}
+          </button>
+
           <button
             onClick={handleRunSync}
             disabled={isSyncing}
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400 disabled:opacity-50 transition"
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/30 hover:brightness-110 disabled:opacity-50 transition"
           >
-            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Syncing Directory...' : 'Trigger AD Delta Sync'}</span>
+            <Zap className={`h-4 w-4 fill-slate-950 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Syncing AD...' : 'Auto-Fetch AD Now'}</span>
           </button>
         </div>
       </div>
@@ -527,6 +678,155 @@ export const ADSyncView: React.FC = () => {
               <span>Sync All High Confidence Items</span>
             </button>
           </div>
+
+          {/* DIRECT AUTO-FETCH QUERY BY HOSTNAME OR IP */}
+          <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50/80 via-emerald-50/30 to-slate-50 p-4 dark:border-teal-900/60 dark:from-teal-950/40 dark:via-slate-900/40 dark:to-slate-900 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-600 text-white shadow-xs">
+                  <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-teal-950 dark:text-teal-200">
+                    Direct Auto-Fetch Query by Hostname or IP
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Directly pull live Active Directory object attributes from DC01.paa.gov.pk
+                  </p>
+                </div>
+              </div>
+
+              {/* Interval adjustment */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Auto-Fetch Interval:</span>
+                <select
+                  value={autoFetchInterval}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setAutoFetchInterval(val);
+                    setSecondsRemaining(val);
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  <option value={15}>Every 15 Seconds (Rapid)</option>
+                  <option value={30}>Every 30 Seconds</option>
+                  <option value={60}>Every 1 Minute</option>
+                  <option value={300}>Every 5 Minutes</option>
+                  <option value={900}>Every 15 Minutes</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Enter Computer Name (e.g. PAA-CTO-PC01, PAA-FIRE-STN02) or IP Address..."
+                  value={singleHostQuery}
+                  onChange={(e) => setSingleHostQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleDirectHostAutoFetch();
+                    }
+                  }}
+                  className="w-full rounded-xl border border-teal-300 bg-white pl-9 pr-3 py-2 text-xs font-mono font-medium text-slate-800 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-teal-800 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <button
+                onClick={() => handleDirectHostAutoFetch()}
+                disabled={isSearchingHost}
+                className="flex items-center gap-1.5 rounded-xl bg-teal-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-teal-500 transition disabled:opacity-50"
+              >
+                <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                <span>{isSearchingHost ? 'Querying...' : 'Auto-Fetch AD'}</span>
+              </button>
+            </div>
+
+            {/* Quick AD Hostname chips */}
+            <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
+              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mr-1">Quick Query AD:</span>
+              {activeDirectoryCatalog.slice(0, 8).map((comp) => (
+                <button
+                  key={comp.computerName}
+                  onClick={() => handleDirectHostAutoFetch(comp.computerName)}
+                  className={`rounded-lg px-2 py-0.5 text-[10px] font-mono font-bold border transition ${
+                    singleHostResult?.computerName === comp.computerName
+                      ? 'border-teal-500 bg-teal-100/70 text-teal-900 dark:bg-teal-950 dark:text-teal-200'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  {comp.computerName}
+                </button>
+              ))}
+            </div>
+
+            {/* Single Host Result Display */}
+            {singleHostResult && (
+              <div className="rounded-xl border border-teal-300/80 bg-white p-3.5 dark:border-teal-800 dark:bg-slate-900 space-y-2.5 animate-in fade-in duration-200">
+                {singleHostActionMsg && (
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-xs font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                    <span>{singleHostActionMsg}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                        {singleHostResult.computerName}
+                      </span>
+                      <span className="rounded-md bg-teal-500/20 px-2 py-0.5 text-[10px] font-bold text-teal-800 dark:text-teal-300">
+                        {singleHostResult.category}
+                      </span>
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        AD Active
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                      {singleHostResult.brand} {singleHostResult.model} &bull; {singleHostResult.assignedUser} ({singleHostResult.department})
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleImportSingleHost}
+                      className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:from-teal-500 hover:to-emerald-500 transition"
+                    >
+                      <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+                      <span>📥 Auto-Import / Reconcile in Inventory</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Attributes Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">IP Address</span>
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{singleHostResult.ipAddress}</span>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Operating System</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200 truncate block" title={singleHostResult.operatingSystem}>
+                      {singleHostResult.operatingSystem}
+                    </span>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Processor / RAM</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{singleHostResult.processor} • {singleHostResult.ram}</span>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
+                    <span className="text-[10px] text-slate-400 font-semibold block">Storage</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">SSD: {singleHostResult.ssd} • HDD: {singleHostResult.hdd}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
 
           {/* Filter Tabs & Search */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

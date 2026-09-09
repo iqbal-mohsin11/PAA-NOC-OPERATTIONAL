@@ -4,6 +4,7 @@ import { ProcurementFormModal } from './ProcurementFormModal';
 import { InternalRequisitionFormModal } from './InternalRequisitionFormModal';
 import { LogisticsReceivingModal } from './LogisticsReceivingModal';
 import { PCWebFileModal } from './PCWebFileModal';
+import { DesktopAppSetupModal } from './DesktopAppSetupModal';
 import {
   Shield,
   Search,
@@ -31,10 +32,15 @@ import {
   Store,
   Laptop,
   PackageCheck,
+  Monitor,
+  Zap,
+  BatteryCharging,
 } from 'lucide-react';
 import { UserRole } from '../types/inventory';
 import { RolePasswordModal } from './RolePasswordModal';
 import { LoginModal } from './LoginModal';
+import { AutoFetchADModal } from './AutoFetchADModal';
+import { getUPSBatteryAlerts } from '../utils/upsBatteryAlerts';
 
 interface HeaderProps {
   onOpenSettings: () => void;
@@ -72,6 +78,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   const [showRequisitionModal, setShowRequisitionModal] = useState(false);
   const [showLogisticsModal, setShowLogisticsModal] = useState(false);
   const [showPCWebFileModal, setShowPCWebFileModal] = useState(false);
+  const [showDesktopAppModal, setShowDesktopAppModal] = useState(false);
+  const [showAutoFetchADModal, setShowAutoFetchADModal] = useState(false);
 
   const roleUsernames: Record<UserRole, string> = {
     Administrator: 'admin_paa',
@@ -86,7 +94,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
   const expiringWarrantyCount = activeAssets.filter((a) => a.warrantyExpiry && new Date(a.warrantyExpiry) <= ninetyDays).length;
   const lowTonerCount = activeAssets.filter((a) => a.category === 'Printer' && a.printerSpecs?.tonerLevel !== undefined && a.printerSpecs.tonerLevel <= 25).length;
-  const totalNocAlertsCount = expiringWarrantyCount + lowTonerCount + openTicketsCount;
+  const upsBatteryAlerts = getUPSBatteryAlerts(activeAssets, now, 30);
+  const upsBatteryDueCount = upsBatteryAlerts.length;
+  const totalNocAlertsCount = expiringWarrantyCount + lowTonerCount + openTicketsCount + upsBatteryDueCount;
 
   const roles: UserRole[] = ['Administrator', 'Technician', 'Viewer'];
 
@@ -168,6 +178,39 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
             {settings.theme === 'dark' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-700" />}
           </button>
 
+          {/* Auto Fetch AD Button */}
+          <button
+            onClick={() => setShowAutoFetchADModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50/90 px-2.5 py-1.5 text-xs font-bold text-teal-700 transition hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:hover:bg-teal-900/60 shadow-2xs"
+            title="Auto Fetch Computer Objects from Active Directory (DC01.paa.gov.pk)"
+          >
+            <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+            <span className="hidden md:inline">Auto Fetch AD</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          </button>
+
+          {/* UPS & Power Fleet Quick Nav Button */}
+          {onNavigateTab && (
+            <button
+              onClick={() => onNavigateTab('ups')}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50/90 px-2.5 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60 shadow-2xs"
+              title="Open UPS & kVA Power Infrastructure Fleet"
+            >
+              <BatteryCharging className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden md:inline">UPS Fleet</span>
+            </button>
+          )}
+
+          {/* Desktop App (.exe) & Shortcut Setup */}
+          <button
+            onClick={() => setShowDesktopAppModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 px-2.5 py-1.5 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 shadow-2xs"
+            title="Make Windows .exe File & Install Desktop Shortcut"
+          >
+            <Monitor className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <span className="hidden sm:inline">Desktop App (.exe)</span>
+          </button>
+
           {/* System Settings Button */}
           <button
             onClick={onOpenSettings}
@@ -185,9 +228,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
             title="System Audit Logs & Alerts"
           >
             <Bell className="h-4 w-4" />
-            {openTicketsCount > 0 && (
+            {totalNocAlertsCount > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow">
-                {openTicketsCount}
+                {totalNocAlertsCount}
               </span>
             )}
           </button>
@@ -204,6 +247,44 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
                   <X className="h-4 w-4" />
                 </button>
               </div>
+
+              {/* Automated UPS Battery Change Alert Banner */}
+              {upsBatteryDueCount > 0 && (
+                <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50/90 p-2.5 dark:border-amber-700 dark:bg-amber-950/40">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-[11px] text-amber-900 dark:text-amber-200">
+                      <BatteryCharging className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>{upsBatteryDueCount} UPS Batteries Due (&le;30 Days)</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowNotificationDrawer(false);
+                        onNavigateTab?.('noc_alerts');
+                      }}
+                      className="text-[10px] font-bold text-amber-700 underline dark:text-amber-300 hover:text-amber-900"
+                    >
+                      View in NOC
+                    </button>
+                  </div>
+                  <div className="mt-1.5 space-y-1">
+                    {upsBatteryAlerts.slice(0, 3).map((alert) => (
+                      <div
+                        key={alert.id}
+                        onClick={() => {
+                          setShowNotificationDrawer(false);
+                          onNavigateTab?.('ups');
+                        }}
+                        className="flex items-center justify-between rounded-md bg-white/80 px-2 py-1 text-[10px] cursor-pointer hover:bg-white dark:bg-slate-800/80 dark:hover:bg-slate-800"
+                      >
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{alert.tagNo} ({alert.roomNo})</span>
+                        <span className={alert.isOverdue ? 'font-bold text-rose-600' : 'font-medium text-amber-700 dark:text-amber-400'}>
+                          {alert.urgencyLabel}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-3 max-h-80 space-y-2.5 overflow-y-auto pr-1">
                 {auditLogs.slice(0, 6).map((log) => (
@@ -355,6 +436,17 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
       <PCWebFileModal
         isOpen={showPCWebFileModal}
         onClose={() => setShowPCWebFileModal(false)}
+      />
+
+      <DesktopAppSetupModal
+        isOpen={showDesktopAppModal}
+        onClose={() => setShowDesktopAppModal(false)}
+      />
+
+      <AutoFetchADModal
+        isOpen={showAutoFetchADModal}
+        onClose={() => setShowAutoFetchADModal(false)}
+        onNavigateToADSync={() => onNavigateTab?.('adsync')}
       />
     </header>
   );
