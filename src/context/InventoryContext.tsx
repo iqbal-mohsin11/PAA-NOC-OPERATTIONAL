@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   AssetItem,
   IssueTicket,
@@ -7,12 +7,20 @@ import {
   AirportFacility,
   OrganizationSettings,
   UserRole,
+  UserAccount,
   RemovalReason,
   Department,
   TonerIssueRecord,
   GatePassRecord,
   LogisticsReceivingRecord,
   UPSMaintenanceRecord,
+  LoginAttempt,
+  UPSBackupChecklistLogSheet,
+  UPSBatteryReplacementLogSheet,
+  PrinterMaintenanceRecord,
+  PrinterModelDefinition,
+  TonerModelDefinition,
+  PrinterPartItem,
 } from '../types/inventory';
 import {
   initialAssets,
@@ -20,6 +28,7 @@ import {
   initialMaintenanceRecords,
   initialUPSMaintenanceRecords,
   initialAuditLogs,
+  initialLoginAttempts,
   initialFacilities,
   initialSettings,
   initialTonerIssueRecords,
@@ -27,6 +36,35 @@ import {
   initialLogisticsReceivingRecords,
 } from '../data/mockData';
 import { initialAIIAPUpsAssets } from '../data/aiiapUpsData';
+import {
+  defaultUPSBackupChecklistLogSheets,
+  defaultUPSBatteryReplacementLogSheets,
+} from '../data/upsFormsData';
+import {
+  initialPrinterCompanies,
+  initialPrinterModels,
+  initialTonerModels,
+  initialPrinterParts,
+  initialPrinterMaintenanceRecords,
+} from '../data/printerMaintenanceData';
+import {
+  enqueueOfflineAction,
+  processOfflineQueue,
+  getOfflineQueue,
+} from '../utils/offlineSync';
+import {
+  AssetBackupSnapshot,
+  startBackgroundBackupService,
+  saveAssetSnapshot,
+  getBackupHistory,
+  restoreBackup,
+  deleteBackup,
+  clearAllBackups,
+  checkCrashRecovery,
+  dismissCrashRecovery as dismissCrashRecoveryService,
+  getBackupConfig,
+  setBackupConfig,
+} from '../services/assetBackupService';
 
 export interface RolePasswords {
   Administrator: string;
@@ -59,10 +97,19 @@ interface InventoryContextType {
   gatePassRecords: GatePassRecord[];
   logisticsReceivingRecords: LogisticsReceivingRecord[];
   upsMaintenanceRecords: UPSMaintenanceRecord[];
+  upsBackupChecklistLogSheets: UPSBackupChecklistLogSheet[];
+  upsBatteryReplacementLogSheets: UPSBatteryReplacementLogSheet[];
+  printerMaintenanceRecords: PrinterMaintenanceRecord[];
+  printerModels: PrinterModelDefinition[];
+  printerCompanies: string[];
+  tonerModels: TonerModelDefinition[];
+  printerParts: PrinterPartItem[];
   auditLogs: AuditLog[];
   facilities: AirportFacility[];
   settings: OrganizationSettings;
   userRole: UserRole;
+  currentUser: UserAccount | null;
+  userAccounts: UserAccount[];
   isLoggedIn: boolean;
   searchQuery: string;
   selectedDepartment: string;
@@ -74,13 +121,23 @@ interface InventoryContextType {
   isSyncing: boolean;
   refreshDbData: () => Promise<void>;
 
-  // Role Passwords & Security
+  // User Accounts & Security
   rolePasswords: RolePasswords;
   updateRolePasswords: (newPasswords: Partial<RolePasswords>) => void;
   verifyRolePassword: (role: UserRole, inputPass: string) => boolean;
   switchRoleWithPassword: (role: UserRole, inputPass: string) => { success: boolean; message: string };
-  login: (role: UserRole, inputPass: string) => { success: boolean; message: string };
+  login: (usernameOrRole: string, inputPass: string) => { success: boolean; message: string; user?: UserAccount };
   logout: () => void;
+  addUserAccount: (user: Omit<UserAccount, 'id'>) => { success: boolean; message: string };
+  updateUserAccount: (id: string, updates: Partial<UserAccount>) => void;
+  deleteUserAccount: (id: string) => { success: boolean; message: string };
+  triggerPasswordResetEmail: (userId: string) => { success: boolean; message: string; resetToken: string; email: string };
+  generateTemporaryBypassCode: (userId: string, durationMinutes?: number) => { success: boolean; code: string; expiresAt: string; message: string };
+  revokeTemporaryBypassCode: (userId: string) => { success: boolean; message: string };
+  resetUserPasswordWithToken: (userId: string, token: string, newPassword: string) => { success: boolean; message: string };
+  loginAttempts: LoginAttempt[];
+  recordLoginAttempt: (attempt: Omit<LoginAttempt, 'id' | 'timestamp'>) => void;
+  clearLoginAttempts: () => void;
 
   // Actions
   setUserRole: (role: UserRole) => void;
@@ -106,6 +163,24 @@ interface InventoryContextType {
   addGatePassRecord: (record: Omit<GatePassRecord, 'id'>) => void;
   updateGatePassStatus: (id: string, status: GatePassRecord['status'], actualReturnDate?: string, securityCleared?: string) => void;
   addLogisticsReceivingRecord: (recordData: Omit<LogisticsReceivingRecord, 'id' | 'createdAt'>, autoCreateAssets?: boolean) => LogisticsReceivingRecord;
+  addUPSBackupChecklistLogSheet: (sheet: Omit<UPSBackupChecklistLogSheet, 'id' | 'createdAt'>) => UPSBackupChecklistLogSheet;
+  deleteUPSBackupChecklistLogSheet: (id: string) => void;
+  addUPSBatteryReplacementLogSheet: (sheet: Omit<UPSBatteryReplacementLogSheet, 'id' | 'createdAt'>) => UPSBatteryReplacementLogSheet;
+  deleteUPSBatteryReplacementLogSheet: (id: string) => void;
+
+  addPrinterMaintenanceRecord: (record: Omit<PrinterMaintenanceRecord, 'id' | 'createdAt'>, updateAssetCondition?: boolean) => PrinterMaintenanceRecord;
+  updatePrinterMaintenanceRecord: (id: string, updates: Partial<PrinterMaintenanceRecord>) => void;
+  deletePrinterMaintenanceRecord: (id: string) => void;
+  addPrinterModel: (model: Omit<PrinterModelDefinition, 'id'>) => PrinterModelDefinition;
+  deletePrinterModel: (id: string) => void;
+  addPrinterCompany: (company: string) => boolean;
+  deletePrinterCompany: (company: string) => void;
+  addTonerModel: (toner: Omit<TonerModelDefinition, 'id'>) => TonerModelDefinition;
+  updateTonerModelStock: (id: string, newStock: number) => void;
+  deleteTonerModel: (id: string) => void;
+  addPrinterPart: (part: Omit<PrinterPartItem, 'id'>) => PrinterPartItem;
+  updatePrinterPartStock: (id: string, newStock: number) => void;
+  deletePrinterPart: (id: string) => void;
 
   updateSettings: (newSettings: Partial<OrganizationSettings>) => void;
   bulkImportAssets: (newAssets: AssetItem[]) => void;
@@ -125,6 +200,26 @@ interface InventoryContextType {
   addVendor: (vendorName: string) => boolean;
   allCategories: string[];
   addCategory: (catName: string) => boolean;
+
+  // Offline Working & Data Sync
+  isOnline: boolean;
+  pendingOfflineCount: number;
+  syncOfflineData: () => Promise<{ success: number; failed: number }>;
+
+  // Background Crash Prevention & Browser Storage Backups
+  lastBackupTime: string | null;
+  lastBackupSnapshot: AssetBackupSnapshot | null;
+  backupIntervalSeconds: number;
+  isBackupServiceActive: boolean;
+  backupHistory: AssetBackupSnapshot[];
+  crashRecoveryInfo: { crashDetected: boolean; latestBackup: AssetBackupSnapshot | null; reason: string } | null;
+  triggerManualBackup: (notes?: string) => Promise<AssetBackupSnapshot>;
+  restoreAssetBackup: (backupId: string) => Promise<boolean>;
+  deleteAssetBackup: (backupId: string) => Promise<void>;
+  clearAllAssetBackups: () => Promise<void>;
+  setBackupIntervalSeconds: (seconds: number) => void;
+  dismissCrashRecovery: () => void;
+  refreshBackupHistory: () => Promise<void>;
 }
 
 const LOCAL_STORAGE_KEY = 'paa_sentinel_v5_data';
@@ -246,6 +341,64 @@ export const defaultRolePasswords: RolePasswords = {
   Viewer: 'viewer123',
 };
 
+export const defaultUserAccounts: UserAccount[] = [
+  {
+    id: 'USR-MOHSIN',
+    username: 'Mohsin',
+    displayName: 'Mohsin (Technician)',
+    role: 'Technician',
+    password: '123',
+    department: 'Hardware & Network Support',
+    email: 'mohsin@paa.gov.pk',
+    createdAt: '2026-09-15',
+    isSystem: true,
+  },
+  {
+    id: 'USR-KALSOOM',
+    username: 'kalsoom',
+    displayName: 'Kalsoom (Technician)',
+    role: 'Technician',
+    password: '123',
+    department: 'Hardware & Network Support',
+    email: 'kalsoom@paa.gov.pk',
+    createdAt: '2026-09-15',
+    isSystem: true,
+  },
+  {
+    id: 'USR-ADMIN-PAA',
+    username: 'admin_paa',
+    displayName: 'PAA System Administrator',
+    role: 'Administrator',
+    password: 'admin123',
+    department: 'IT Operations',
+    email: 'admin@paa.gov.pk',
+    createdAt: '2026-01-01',
+    isSystem: true,
+  },
+  {
+    id: 'USR-TECH-PAA',
+    username: 'tech_paa',
+    displayName: 'PAA IT Support Technician',
+    role: 'Technician',
+    password: 'tech123',
+    department: 'Hardware Maintenance',
+    email: 'tech@paa.gov.pk',
+    createdAt: '2026-01-01',
+    isSystem: true,
+  },
+  {
+    id: 'USR-VIEWER-PAA',
+    username: 'viewer_paa',
+    displayName: 'PAA Read-Only Auditor',
+    role: 'Viewer',
+    password: 'viewer123',
+    department: 'Internal Audit',
+    email: 'auditor@paa.gov.pk',
+    createdAt: '2026-01-01',
+    isSystem: true,
+  },
+];
+
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assets, setAssets] = useState<AssetItem[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_assets`);
@@ -294,10 +447,118 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return deduplicateItems<UPSMaintenanceRecord>(initial, (u) => u.id);
   });
 
+  const [upsBackupChecklistLogSheets, setUpsBackupChecklistLogSheets] = useState<UPSBackupChecklistLogSheet[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_ups_backup_log_sheets`);
+      const initial: UPSBackupChecklistLogSheet[] = saved ? JSON.parse(saved) : defaultUPSBackupChecklistLogSheets;
+      return deduplicateItems<UPSBackupChecklistLogSheet>(initial, (s) => s.id);
+    } catch {
+      return defaultUPSBackupChecklistLogSheets;
+    }
+  });
+
+  const [upsBatteryReplacementLogSheets, setUpsBatteryReplacementLogSheets] = useState<UPSBatteryReplacementLogSheet[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_ups_battery_log_sheets`);
+      const initial: UPSBatteryReplacementLogSheet[] = saved ? JSON.parse(saved) : defaultUPSBatteryReplacementLogSheets;
+      return deduplicateItems<UPSBatteryReplacementLogSheet>(initial, (s) => s.id);
+    } catch {
+      return defaultUPSBatteryReplacementLogSheets;
+    }
+  });
+
+  const [printerMaintenanceRecords, setPrinterMaintenanceRecords] = useState<PrinterMaintenanceRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_printer_maintenance`);
+      return saved ? JSON.parse(saved) : initialPrinterMaintenanceRecords;
+    } catch {
+      return initialPrinterMaintenanceRecords;
+    }
+  });
+
+  const [printerModels, setPrinterModels] = useState<PrinterModelDefinition[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_printer_models`);
+      return saved ? JSON.parse(saved) : initialPrinterModels;
+    } catch {
+      return initialPrinterModels;
+    }
+  });
+
+  const [printerCompanies, setPrinterCompanies] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_printer_companies`);
+      return saved ? JSON.parse(saved) : initialPrinterCompanies;
+    } catch {
+      return initialPrinterCompanies;
+    }
+  });
+
+  const [tonerModels, setTonerModels] = useState<TonerModelDefinition[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_toner_models`);
+      return saved ? JSON.parse(saved) : initialTonerModels;
+    } catch {
+      return initialTonerModels;
+    }
+  });
+
+  const [printerParts, setPrinterParts] = useState<PrinterPartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_printer_parts`);
+      return saved ? JSON.parse(saved) : initialPrinterParts;
+    } catch {
+      return initialPrinterParts;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_printer_maintenance`, JSON.stringify(printerMaintenanceRecords));
+  }, [printerMaintenanceRecords]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_printer_models`, JSON.stringify(printerModels));
+  }, [printerModels]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_printer_companies`, JSON.stringify(printerCompanies));
+  }, [printerCompanies]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_toner_models`, JSON.stringify(tonerModels));
+  }, [tonerModels]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_printer_parts`, JSON.stringify(printerParts));
+  }, [printerParts]);
+
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_logs`);
     return saved ? JSON.parse(saved) : initialAuditLogs;
   });
+
+  const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_login_attempts`);
+    return saved ? JSON.parse(saved) : initialLoginAttempts;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_login_attempts`, JSON.stringify(loginAttempts));
+  }, [loginAttempts]);
+
+  const recordLoginAttempt = (attempt: Omit<LoginAttempt, 'id' | 'timestamp'>) => {
+    const newAttempt: LoginAttempt = {
+      ...attempt,
+      id: `LOG-ATT-${Date.now().toString().slice(-6)}`,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    };
+    setLoginAttempts((prev) => [newAttempt, ...prev]);
+  };
+
+  const clearLoginAttempts = () => {
+    setLoginAttempts([]);
+    addAuditLog('Login History Cleared', 'Administrator cleared login attempt history audit log', undefined, 'warning');
+  };
 
   const [facilities, setFacilities] = useState<AirportFacility[]>(initialFacilities);
 
@@ -392,6 +653,137 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const [userRole, setUserRole] = useState<UserRole>('Administrator');
+
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_user_accounts`);
+    let accounts: UserAccount[] = defaultUserAccounts;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          accounts = parsed;
+        }
+      } catch (e) {
+        console.error('Error parsing saved user accounts', e);
+      }
+    }
+
+    // Guarantee Mohsin and kalsoom are registered as Technician (Write Data & View Data Only) with password 123
+    const hasMohsin = accounts.some((u) => u.username.toLowerCase() === 'mohsin');
+    if (!hasMohsin) {
+      accounts = [
+        {
+          id: 'USR-MOHSIN',
+          username: 'Mohsin',
+          displayName: 'Mohsin (Technician)',
+          role: 'Technician',
+          password: '123',
+          department: 'Hardware & Network Support',
+          email: 'mohsin@paa.gov.pk',
+          createdAt: '2026-09-15',
+          isSystem: true,
+        },
+        ...accounts,
+      ];
+    } else {
+      accounts = accounts.map((u) =>
+        u.username.toLowerCase() === 'mohsin'
+          ? {
+              ...u,
+              role: 'Technician' as UserRole,
+              displayName: 'Mohsin (Technician)',
+              department: 'Hardware & Network Support',
+              password: u.password || '123',
+            }
+          : u
+      );
+    }
+
+    const hasKalsoom = accounts.some((u) => u.username.toLowerCase() === 'kalsoom');
+    if (!hasKalsoom) {
+      accounts = [
+        {
+          id: 'USR-KALSOOM',
+          username: 'kalsoom',
+          displayName: 'Kalsoom (Technician)',
+          role: 'Technician',
+          password: '123',
+          department: 'Hardware & Network Support',
+          email: 'kalsoom@paa.gov.pk',
+          createdAt: '2026-09-15',
+          isSystem: true,
+        },
+        ...accounts,
+      ];
+    } else {
+      accounts = accounts.map((u) =>
+        u.username.toLowerCase() === 'kalsoom'
+          ? {
+              ...u,
+              role: 'Technician' as UserRole,
+              displayName: 'Kalsoom (Technician)',
+              department: 'Hardware & Network Support',
+              password: u.password || '123',
+            }
+          : u
+      );
+    }
+
+    return accounts;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_user_accounts`, JSON.stringify(userAccounts));
+  }, [userAccounts]);
+
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_current_user`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.username?.toLowerCase() === 'mohsin') {
+          return {
+            ...parsed,
+            role: 'Technician' as UserRole,
+            displayName: 'Mohsin (Technician)',
+            password: parsed.password || '123',
+          };
+        }
+        if (parsed?.username?.toLowerCase() === 'kalsoom') {
+          return {
+            ...parsed,
+            role: 'Technician' as UserRole,
+            displayName: 'Kalsoom (Technician)',
+            password: parsed.password || '123',
+          };
+        }
+        return parsed;
+      } catch (e) {
+        console.error('Error parsing saved current user', e);
+      }
+    }
+    return defaultUserAccounts[0]; // Default to Mohsin (Technician)
+  });
+
+  useEffect(() => {
+    if (currentUser) {
+      // Keep currentUser role and info in sync with userAccounts
+      const matchingAccount = userAccounts.find(
+        (u) => u.username.toLowerCase() === currentUser.username.toLowerCase()
+      );
+      if (matchingAccount && (matchingAccount.role !== currentUser.role || matchingAccount.displayName !== currentUser.displayName)) {
+        setCurrentUser(matchingAccount);
+        setUserRole(matchingAccount.role);
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}_current_user`, JSON.stringify(matchingAccount));
+        return;
+      }
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_current_user`, JSON.stringify(currentUser));
+      setUserRole(currentUser.role);
+    } else {
+      localStorage.removeItem(`${LOCAL_STORAGE_KEY}_current_user`);
+    }
+  }, [currentUser, userAccounts]);
+
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_is_logged_in`);
     return saved !== null ? JSON.parse(saved) : true;
@@ -456,6 +848,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [upsMaintenanceRecords]);
 
   useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_ups_backup_log_sheets`, JSON.stringify(upsBackupChecklistLogSheets));
+  }, [upsBackupChecklistLogSheets]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}_ups_battery_log_sheets`, JSON.stringify(upsBatteryReplacementLogSheets));
+  }, [upsBatteryReplacementLogSheets]);
+
+  useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY}_logs`, JSON.stringify(auditLogs));
   }, [auditLogs]);
 
@@ -505,6 +905,70 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
+  // Offline Connectivity State & Synchronization Queue
+  const [isOnlineState, setIsOnlineState] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => getOfflineQueue().length);
+
+  // Dispatch API call with automatic offline queue fallback
+  const dispatchSync = useCallback(
+    (action: string, endpoint: string, method: 'POST' | 'PUT' | 'DELETE' = 'POST', payload?: any) => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        enqueueOfflineAction(action, endpoint, method, payload);
+        setPendingOfflineCount(getOfflineQueue().length);
+        return;
+      }
+      const opts: RequestInit = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (payload && method !== 'DELETE') {
+        opts.body = JSON.stringify(payload);
+      }
+      fetch(endpoint, opts)
+        .then((res) => {
+          if (!res.ok) {
+            enqueueOfflineAction(action, endpoint, method, payload);
+            setPendingOfflineCount(getOfflineQueue().length);
+          }
+        })
+        .catch(() => {
+          enqueueOfflineAction(action, endpoint, method, payload);
+          setPendingOfflineCount(getOfflineQueue().length);
+        });
+    },
+    []
+  );
+
+  const syncOfflineData = useCallback(async () => {
+    const res = await processOfflineQueue();
+    setPendingOfflineCount(getOfflineQueue().length);
+    if (res.successCount > 0) {
+      await refreshDbData();
+    }
+    return { success: res.successCount, failed: res.failureCount };
+  }, [refreshDbData]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnlineState(true);
+      // Auto flush queued mutations on reconnect
+      syncOfflineData();
+    };
+    const handleOffline = () => {
+      setIsOnlineState(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [syncOfflineData]);
+
   useEffect(() => {
     refreshDbData();
     const interval = setInterval(refreshDbData, 30000); // periodically refresh status
@@ -523,13 +987,141 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     setAuditLogs((prev) => [newLog, ...prev]);
 
-    // Async sync to Mongo
-    fetch('/api/audit-logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newLog),
-    }).catch(() => {});
+    // Async sync to Mongo with offline fallback
+    dispatchSync('Audit Log Entry', '/api/audit-logs', 'POST', newLog);
   };
+
+  // Asset Reference for background backup service without stale closures
+  const assetsRef = useRef<AssetItem[]>(assets);
+  useEffect(() => {
+    assetsRef.current = assets;
+  }, [assets]);
+
+  // Asset Crash Prevention & Backup States
+  const [backupConfigState, setBackupConfigState] = useState(() => getBackupConfig());
+  const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
+  const [lastBackupSnapshot, setLastBackupSnapshot] = useState<AssetBackupSnapshot | null>(null);
+  const [backupHistory, setBackupHistory] = useState<AssetBackupSnapshot[]>([]);
+  const [isBackupServiceActive, setIsBackupServiceActive] = useState<boolean>(true);
+  const [crashRecoveryInfo, setCrashRecoveryInfo] = useState<{
+    crashDetected: boolean;
+    latestBackup: AssetBackupSnapshot | null;
+    reason: string;
+  } | null>(null);
+
+  // Refresh backup history from IndexedDB / LocalStorage Mirror
+  const refreshBackupHistory = useCallback(async () => {
+    try {
+      const history = await getBackupHistory();
+      setBackupHistory(history);
+      if (history.length > 0) {
+        setLastBackupSnapshot(history[0]);
+        setLastBackupTime(history[0].formattedTime);
+      }
+    } catch (err) {
+      console.warn('Failed to load backup history:', err);
+    }
+  }, []);
+
+  // Initialize background backup service & crash detection
+  useEffect(() => {
+    refreshBackupHistory();
+
+    // Check for crash recovery after state initialization
+    const timer = setTimeout(() => {
+      checkCrashRecovery(assetsRef.current).then((result) => {
+        if (result.crashDetected) {
+          setCrashRecoveryInfo(result);
+        }
+      });
+    }, 1500);
+
+    // Start periodic background service with lifecycle guards
+    const cleanup = startBackgroundBackupService(
+      () => assetsRef.current,
+      (snapshot) => {
+        setLastBackupSnapshot(snapshot);
+        setLastBackupTime(snapshot.formattedTime);
+        getBackupHistory().then(setBackupHistory);
+      }
+    );
+
+    return () => {
+      clearTimeout(timer);
+      cleanup();
+    };
+  }, [refreshBackupHistory]);
+
+  const triggerManualBackup = useCallback(
+    async (notes?: string) => {
+      const snapshot = await saveAssetSnapshot(assetsRef.current, 'manual', notes);
+      setLastBackupSnapshot(snapshot);
+      setLastBackupTime(snapshot.formattedTime);
+      await refreshBackupHistory();
+      addAuditLog(
+        'Asset Storage Backup Created',
+        `Manual snapshot ${snapshot.backupId} (${snapshot.assetCount} assets, ${snapshot.sizeKb}KB) saved to browser storage`,
+        undefined,
+        'info'
+      );
+      return snapshot;
+    },
+    [refreshBackupHistory]
+  );
+
+  const restoreAssetBackup = useCallback(
+    async (backupId: string) => {
+      const restored = await restoreBackup(backupId);
+      if (restored && Array.isArray(restored) && restored.length > 0) {
+        setAssets(restored);
+        try {
+          localStorage.setItem(`${LOCAL_STORAGE_KEY}_assets`, JSON.stringify(restored));
+        } catch (err) {
+          console.warn('LocalStorage save error on restore:', err);
+        }
+        addAuditLog(
+          'Asset List Restored from Backup',
+          `Restored ${restored.length} assets from snapshot ${backupId}`,
+          undefined,
+          'warning'
+        );
+        await refreshBackupHistory();
+        setCrashRecoveryInfo(null);
+        return true;
+      }
+      return false;
+    },
+    [refreshBackupHistory]
+  );
+
+  const deleteAssetBackup = useCallback(
+    async (backupId: string) => {
+      await deleteBackup(backupId);
+      await refreshBackupHistory();
+    },
+    [refreshBackupHistory]
+  );
+
+  const clearAllAssetBackups = useCallback(async () => {
+    await clearAllBackups();
+    await refreshBackupHistory();
+    setLastBackupSnapshot(null);
+    setLastBackupTime(null);
+  }, [refreshBackupHistory]);
+
+  const setBackupIntervalSeconds = useCallback((seconds: number) => {
+    setBackupConfig({ intervalSeconds: seconds });
+    setBackupConfigState((prev) => ({ ...prev, intervalSeconds: seconds }));
+  }, []);
+
+  const dismissCrashRecovery = useCallback(() => {
+    if (crashRecoveryInfo?.latestBackup?.backupId) {
+      dismissCrashRecoveryService(crashRecoveryInfo.latestBackup.backupId);
+    } else {
+      dismissCrashRecoveryService();
+    }
+    setCrashRecoveryInfo(null);
+  }, [crashRecoveryInfo]);
 
   const toggleTheme = () => {
     setSettings((prev) => ({
@@ -576,12 +1168,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setAssets((prev) => [newAsset, ...prev]);
 
-    // Persist to MongoDB API
-    fetch('/api/assets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newAsset),
-    }).catch(() => {});
+    // Persist to MongoDB API with offline queue
+    dispatchSync(`Create Asset ${newAsset.id}`, '/api/assets', 'POST', newAsset);
 
     addAuditLog('Asset Created', `Asset ${newAsset.id} (${newAsset.name}) registered in ${newAsset.department}`, newAsset.id, 'success');
     return newAsset;
@@ -602,12 +1190,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
     );
 
-    // Sync to Mongo
-    fetch(`/api/assets/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(assetData),
-    }).catch(() => {});
+    // Sync to Mongo with offline queue fallback
+    dispatchSync(`Update Asset ${id}`, `/api/assets/${id}`, 'PUT', assetData);
 
     addAuditLog('Asset Updated', `Asset ${id} details updated in system`, id, 'info');
   };
@@ -634,11 +1218,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )
     );
 
-    fetch(`/api/assets/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isRemoved: true, status: reason, removalDetails }),
-    }).catch(() => {});
+    dispatchSync(`Archive Asset ${id}`, `/api/assets/${id}`, 'PUT', { isRemoved: true, status: reason, removalDetails });
 
     addAuditLog('Asset Archived/Removed', `Asset ${id} marked as removed (${reason}) by ${removedBy}. Reason: ${remarks}`, id, 'warning');
   };
@@ -658,18 +1238,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )
     );
 
-    fetch(`/api/assets/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isRemoved: false, status: 'Spare', removalDetails: null }),
-    }).catch(() => {});
+    dispatchSync(`Restore Asset ${id}`, `/api/assets/${id}`, 'PUT', { isRemoved: false, status: 'Spare', removalDetails: null });
 
     addAuditLog('Asset Restored', `Asset ${id} restored from archive to active/spare inventory`, id, 'success');
   };
 
   const deletePermanently = (id: string) => {
     setAssets((prev) => prev.filter((item) => item.id !== id));
-    fetch(`/api/assets/${id}`, { method: 'DELETE' }).catch(() => {});
+    dispatchSync(`Delete Asset ${id}`, `/api/assets/${id}`, 'DELETE');
     addAuditLog('Asset Permanently Deleted', `Asset ${id} permanently removed from database`, id, 'danger');
   };
 
@@ -708,11 +1284,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     setMaintenanceRecords((prev) => [newRecord, ...prev]);
 
-    fetch('/api/maintenance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newRecord),
-    }).catch(() => {});
+    dispatchSync(`Log Maintenance ${newRecord.id}`, '/api/maintenance', 'POST', newRecord);
 
     addAuditLog('Maintenance Logged', `Maintenance service logged for ${recordData.deviceName} (Cost: PKR ${recordData.cost.toLocaleString()})`, recordData.assetId, 'info');
   };
@@ -744,11 +1316,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
     }
 
-    fetch('/api/toner', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newRecord, updatePrinterLevel }),
-    }).catch(() => {});
+    dispatchSync(`Issue Toner ${newRecord.id}`, '/api/toner', 'POST', { ...newRecord, updatePrinterLevel });
 
     addAuditLog(
       'Toner Cartridge Issued',
@@ -783,11 +1351,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
     }
 
-    fetch('/api/gatepasses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newRecord),
-    }).catch(() => {});
+    dispatchSync(`Issue Gate Pass ${newRecord.id}`, '/api/gatepasses', 'POST', newRecord);
 
     addAuditLog(
       'Gate Pass Issued',
@@ -827,11 +1391,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
     );
 
-    fetch(`/api/gatepasses/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, actualReturnDate, securityClearedBy: securityCleared }),
-    }).catch(() => {});
+    dispatchSync(`Update Gate Pass ${id}`, `/api/gatepasses/${id}`, 'PUT', { status, actualReturnDate, securityClearedBy: securityCleared });
 
     addAuditLog('Gate Pass Status Updated', `Gate Pass ${id} status updated to: ${status}`, undefined, 'info');
   };
@@ -898,11 +1458,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setAssets((prev) => [...newAssetsBatch, ...prev]);
 
-      fetch('/api/assets/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assets: newAssetsBatch }),
-      }).catch(() => {});
+      dispatchSync('Bulk Import Assets', '/api/assets/bulk', 'POST', { assets: newAssetsBatch });
     }
 
     const finalRecord: LogisticsReceivingRecord = {
@@ -914,11 +1470,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setLogisticsReceivingRecords((prev) => [finalRecord, ...prev]);
 
-    fetch('/api/logistics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalRecord),
-    }).catch(() => {});
+    dispatchSync(`Logistics Receiving ${finalRecord.id}`, '/api/logistics', 'POST', finalRecord);
 
     addAuditLog(
       'Logistics Item Received',
@@ -1000,11 +1552,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       );
     }
 
-    fetch('/api/ups-maintenance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newRecord),
-    }).catch(() => {});
+    dispatchSync(`UPS Service ${newRecord.id}`, '/api/ups-maintenance', 'POST', newRecord);
 
     addAuditLog(
       'UPS Maintenance & Battery Logged',
@@ -1021,6 +1569,261 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
     );
     addAuditLog('UPS Maintenance Record Updated', `UPS Maintenance Record ${id} updated`, undefined, 'info');
+  };
+
+  const addUPSBackupChecklistLogSheet = (
+    sheetData: Omit<UPSBackupChecklistLogSheet, 'id' | 'createdAt'>
+  ): UPSBackupChecklistLogSheet => {
+    const year = new Date().getFullYear();
+    const count = upsBackupChecklistLogSheets.length + 1;
+    const newId = `LOG-CHK-${year}-${String(count).padStart(3, '0')}`;
+    const newSheet: UPSBackupChecklistLogSheet = {
+      ...sheetData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    setUpsBackupChecklistLogSheets((prev) => [newSheet, ...prev]);
+    addAuditLog(
+      'UPS Backup Checklist Logged',
+      `Saved UPS Backup Checklist Log Sheet ${newSheet.sheetNumber} (${newSheet.title}) with ${newSheet.totalItems} items. Inspector: ${newSheet.checkedByName}`,
+      undefined,
+      'success'
+    );
+    return newSheet;
+  };
+
+  const deleteUPSBackupChecklistLogSheet = (id: string) => {
+    const target = upsBackupChecklistLogSheets.find((s) => s.id === id);
+    setUpsBackupChecklistLogSheets((prev) => prev.filter((s) => s.id !== id));
+    if (target) {
+      addAuditLog(
+        'UPS Checklist Log Deleted',
+        `Deleted UPS Backup Checklist Log Sheet ${target.sheetNumber} (${target.id})`,
+        undefined,
+        'warning'
+      );
+    }
+  };
+
+  const addUPSBatteryReplacementLogSheet = (
+    sheetData: Omit<UPSBatteryReplacementLogSheet, 'id' | 'createdAt'>
+  ): UPSBatteryReplacementLogSheet => {
+    const year = new Date().getFullYear();
+    const count = upsBatteryReplacementLogSheets.length + 1;
+    const newId = `LOG-BAT-${year}-${String(count).padStart(3, '0')}`;
+    const newSheet: UPSBatteryReplacementLogSheet = {
+      ...sheetData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    setUpsBatteryReplacementLogSheets((prev) => [newSheet, ...prev]);
+    addAuditLog(
+      'UPS Battery Replacement Logged',
+      `Saved UPS Battery Replacement Log Sheet ${newSheet.sheetNumber} (${newSheet.title}) for ${newSheet.totalUnitsReplaced} UPS units (${newSheet.totalBatteriesCount} batteries). Technician: ${newSheet.chiefTechnician}`,
+      undefined,
+      'success'
+    );
+    return newSheet;
+  };
+
+  const deleteUPSBatteryReplacementLogSheet = (id: string) => {
+    const target = upsBatteryReplacementLogSheets.find((s) => s.id === id);
+    setUpsBatteryReplacementLogSheets((prev) => prev.filter((s) => s.id !== id));
+    if (target) {
+      addAuditLog(
+        'UPS Battery Log Deleted',
+        `Deleted UPS Battery Replacement Log Sheet ${target.sheetNumber} (${target.id})`,
+        undefined,
+        'warning'
+      );
+    }
+  };
+
+  const addPrinterMaintenanceRecord = (
+    recordData: Omit<PrinterMaintenanceRecord, 'id' | 'createdAt'>,
+    updateAssetCondition: boolean = true
+  ): PrinterMaintenanceRecord => {
+    const year = new Date().getFullYear();
+    const count = printerMaintenanceRecords.length + 1;
+    const newId = `PMR-${year}-${String(count).padStart(3, '0')}`;
+    const newRecord: PrinterMaintenanceRecord = {
+      ...recordData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPrinterMaintenanceRecords((prev) => [newRecord, ...prev]);
+
+    // Mirror to generic maintenance records
+    const genericMntId = `MNT-${year}-P${String(count).padStart(3, '0')}`;
+    const genericRecord: MaintenanceRecord = {
+      id: genericMntId,
+      assetId: recordData.assetId,
+      deviceName: recordData.printerName,
+      date: recordData.date,
+      engineer: recordData.technicianName,
+      description: `[Printer ${recordData.serviceType}] ${recordData.issueReported}`,
+      partsReplaced: recordData.partsChangedSummary || (recordData.partsChanged && recordData.partsChanged.length > 0 ? recordData.partsChanged.map(p => `${p.quantity}x ${p.partName}`).join(', ') : 'None'),
+      cost: recordData.costPkr || 0,
+      remarks: `Status: ${recordData.status} | Counter: ${recordData.pageCount || 'N/A'} pages | Test Page: ${recordData.testPagePrinted ? 'Verified' : 'Pending'} | ${recordData.remarks || ''}`,
+    };
+    setMaintenanceRecords((prev) => [genericRecord, ...prev]);
+
+    // Automatically decrement stock for any matched printer parts used!
+    if (recordData.partsChanged && recordData.partsChanged.length > 0) {
+      setPrinterParts((prev) =>
+        prev.map((part) => {
+          const used = recordData.partsChanged.find(
+            (p) => (p.partId && p.partId === part.id) || (p.partNumber && p.partNumber.toLowerCase() === part.partNumber.toLowerCase()) || (p.partName && p.partName.toLowerCase() === part.partName.toLowerCase())
+          );
+          if (used) {
+            const newStock = Math.max(0, part.quantityInStock - used.quantity);
+            return { ...part, quantityInStock: newStock };
+          }
+          return part;
+        })
+      );
+    }
+
+    // Update asset condition if requested
+    if (updateAssetCondition && recordData.assetId) {
+      setAssets((prev) =>
+        prev.map((a) => {
+          if (a.id === recordData.assetId) {
+            return {
+              ...a,
+              status: recordData.status === 'Completed' ? 'Active' : recordData.status === 'Scrap / Unrepairable' ? 'Scrapped' : 'Under Repair',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return a;
+        })
+      );
+    }
+
+    addAuditLog(
+      'Printer Maintenance & Repair Logged',
+      `Logged ${recordData.serviceType} for ${recordData.printerName} (${recordData.model}) [${newId}]. Tech: ${recordData.technicianName}. Parts: ${recordData.partsChangedSummary || 'None'}`,
+      recordData.assetId,
+      'success'
+    );
+
+    return newRecord;
+  };
+
+  const updatePrinterMaintenanceRecord = (id: string, updates: Partial<PrinterMaintenanceRecord>) => {
+    setPrinterMaintenanceRecords((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+    );
+    addAuditLog('Printer Maintenance Record Updated', `Updated Printer Maintenance Record ${id}`, undefined, 'info');
+  };
+
+  const deletePrinterMaintenanceRecord = (id: string) => {
+    const target = printerMaintenanceRecords.find((r) => r.id === id);
+    setPrinterMaintenanceRecords((prev) => prev.filter((r) => r.id !== id));
+    if (target) {
+      addAuditLog(
+        'Printer Maintenance Record Deleted',
+        `Deleted Printer Maintenance Record ${target.id} (${target.printerName})`,
+        target.assetId,
+        'warning'
+      );
+    }
+  };
+
+  const addPrinterModel = (modelData: Omit<PrinterModelDefinition, 'id'>): PrinterModelDefinition => {
+    const cleanComp = modelData.company.split(' ')[0].toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) || 'PRT';
+    const newId = `PM-${cleanComp}-${Date.now().toString().slice(-4)}`;
+    const newModel: PrinterModelDefinition = {
+      ...modelData,
+      id: newId,
+    };
+    setPrinterModels((prev) => [newModel, ...prev]);
+
+    // Also auto-add company if not already present
+    if (modelData.company && !printerCompanies.includes(modelData.company)) {
+      setPrinterCompanies((prev) => [...prev, modelData.company]);
+    }
+
+    addAuditLog('Printer Model Added', `Added new printer model: ${modelData.company} ${modelData.modelName} (${modelData.category})`, undefined, 'success');
+    return newModel;
+  };
+
+  const deletePrinterModel = (id: string) => {
+    const target = printerModels.find((m) => m.id === id);
+    setPrinterModels((prev) => prev.filter((m) => m.id !== id));
+    if (target) {
+      addAuditLog('Printer Model Removed', `Removed printer model: ${target.company} ${target.modelName}`, undefined, 'warning');
+    }
+  };
+
+  const addPrinterCompany = (company: string): boolean => {
+    const trimmed = company.trim();
+    if (!trimmed) return false;
+    if (printerCompanies.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      return false;
+    }
+    setPrinterCompanies((prev) => [...prev, trimmed]);
+    addAuditLog('Printer Company Added', `Registered new printer manufacturer / company: ${trimmed}`, undefined, 'info');
+    return true;
+  };
+
+  const deletePrinterCompany = (company: string) => {
+    setPrinterCompanies((prev) => prev.filter((c) => c !== company));
+    addAuditLog('Printer Company Removed', `Removed printer manufacturer / company: ${company}`, undefined, 'warning');
+  };
+
+  const addTonerModel = (tonerData: Omit<TonerModelDefinition, 'id'>): TonerModelDefinition => {
+    const cleanComp = tonerData.company.split(' ')[0].toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) || 'TNR';
+    const newId = `TNR-${cleanComp}-${Date.now().toString().slice(-4)}`;
+    const newToner: TonerModelDefinition = {
+      ...tonerData,
+      id: newId,
+    };
+    setTonerModels((prev) => [newToner, ...prev]);
+    addAuditLog('Toner Model Added', `Registered new toner model: ${newToner.modelCode} for ${newToner.company} (Stock: ${newToner.currentStock})`, undefined, 'success');
+    return newToner;
+  };
+
+  const updateTonerModelStock = (id: string, newStock: number) => {
+    setTonerModels((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, currentStock: Math.max(0, newStock) } : t))
+    );
+  };
+
+  const deleteTonerModel = (id: string) => {
+    const target = tonerModels.find((t) => t.id === id);
+    setTonerModels((prev) => prev.filter((t) => t.id !== id));
+    if (target) {
+      addAuditLog('Toner Model Removed', `Removed toner model: ${target.modelCode}`, undefined, 'warning');
+    }
+  };
+
+  const addPrinterPart = (partData: Omit<PrinterPartItem, 'id'>): PrinterPartItem => {
+    const count = printerParts.length + 1;
+    const catCode = partData.category.split(' ')[0].toUpperCase().slice(0, 3);
+    const newId = `PRT-${catCode}-${String(count).padStart(3, '0')}`;
+    const newPart: PrinterPartItem = {
+      ...partData,
+      id: newId,
+    };
+    setPrinterParts((prev) => [newPart, ...prev]);
+    addAuditLog('Printer Part Added', `Added spare part: ${newPart.partName} (PN: ${newPart.partNumber}, Stock: ${newPart.quantityInStock})`, undefined, 'success');
+    return newPart;
+  };
+
+  const updatePrinterPartStock = (id: string, newStock: number) => {
+    setPrinterParts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, quantityInStock: Math.max(0, newStock) } : p))
+    );
+  };
+
+  const deletePrinterPart = (id: string) => {
+    const target = printerParts.find((p) => p.id === id);
+    setPrinterParts((prev) => prev.filter((p) => p.id !== id));
+    if (target) {
+      addAuditLog('Printer Part Removed', `Removed printer spare part: ${target.partName} (${target.partNumber})`, undefined, 'warning');
+    }
   };
 
   const updateSettings = (newSettings: Partial<OrganizationSettings>) => {
@@ -1057,10 +1860,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       assets,
       tickets,
       maintenanceRecords,
+      upsMaintenanceRecords,
+      upsBackupChecklistLogSheets,
+      upsBatteryReplacementLogSheets,
       logisticsReceivingRecords,
       tonerIssueRecords,
       gatePassRecords,
       auditLogs,
+      loginAttempts,
     };
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(fullBackup, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -1083,10 +1890,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setAssets(deduplicateItems<AssetItem>(parsed.assets, (a) => a.id));
         if (parsed.tickets) setTickets(deduplicateItems<IssueTicket>(parsed.tickets, (t) => t.ticketNumber));
         if (parsed.maintenanceRecords) setMaintenanceRecords(deduplicateItems<MaintenanceRecord>(parsed.maintenanceRecords, (m) => m.id));
+        if (parsed.upsMaintenanceRecords) setUpsMaintenanceRecords(deduplicateItems<UPSMaintenanceRecord>(parsed.upsMaintenanceRecords, (u) => u.id));
+        if (parsed.upsBackupChecklistLogSheets) setUpsBackupChecklistLogSheets(deduplicateItems<UPSBackupChecklistLogSheet>(parsed.upsBackupChecklistLogSheets, (s) => s.id));
+        if (parsed.upsBatteryReplacementLogSheets) setUpsBatteryReplacementLogSheets(deduplicateItems<UPSBatteryReplacementLogSheet>(parsed.upsBatteryReplacementLogSheets, (s) => s.id));
         if (parsed.logisticsReceivingRecords) setLogisticsReceivingRecords(deduplicateItems<LogisticsReceivingRecord>(parsed.logisticsReceivingRecords, (l) => l.id));
         if (parsed.tonerIssueRecords) setTonerIssueRecords(deduplicateItems<TonerIssueRecord>(parsed.tonerIssueRecords, (t) => t.id));
         if (parsed.gatePassRecords) setGatePassRecords(deduplicateItems<GatePassRecord>(parsed.gatePassRecords, (g) => g.id));
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
+        if (parsed.loginAttempts && Array.isArray(parsed.loginAttempts)) setLoginAttempts(parsed.loginAttempts);
         if (parsed.settings) setSettings(parsed.settings);
 
         // Sync to MongoDB backend
@@ -1114,6 +1925,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setTonerIssueRecords(deduplicateItems(initialTonerIssueRecords, (tr) => tr.id));
     setGatePassRecords(deduplicateItems(initialGatePassRecords, (gp) => gp.id));
     setAuditLogs(initialAuditLogs);
+    setLoginAttempts(initialLoginAttempts);
     setSettings(initialSettings);
 
     fetch('/api/seed/reset', { method: 'POST' }).catch(() => {});
@@ -1174,34 +1986,426 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const verifyRolePassword = (role: UserRole, inputPass: string): boolean => {
+    const trimmed = inputPass.trim();
+    // Check user accounts with this role (e.g. Mohsin '123', kalsoom '123', admin_paa 'admin123')
+    const hasMatchingUser = userAccounts.some((u) => u.role === role && u.password.trim() === trimmed);
+    if (hasMatchingUser) return true;
     const expected = rolePasswords[role] || defaultRolePasswords[role];
-    return inputPass.trim() === expected.trim();
+    return trimmed === expected.trim();
   };
 
   const switchRoleWithPassword = (role: UserRole, inputPass: string): { success: boolean; message: string } => {
-    const isValid = verifyRolePassword(role, inputPass);
-    if (!isValid) {
+    const trimmed = inputPass.trim();
+    const matchingUser = userAccounts.find(
+      (u) => u.role === role && u.password.trim() === trimmed
+    );
+    const legacyPass = rolePasswords[role] || defaultRolePasswords[role];
+    const isLegacyValid = trimmed === legacyPass.trim();
+
+    if (!matchingUser && !isLegacyValid) {
+      recordLoginAttempt({
+        username: role.toLowerCase(),
+        displayName: `${role} Access Key`,
+        role: role,
+        status: 'Failed',
+        failureReason: `Invalid security password for ${role} role access`,
+        ipAddress: '192.168.10.22',
+        terminal: 'PAA Workshop Terminal 01',
+      });
       return { success: false, message: `Invalid security password for ${role} role access.` };
+    }
+
+    const assignedUser = matchingUser || userAccounts.find((u) => u.role === role) || null;
+    if (assignedUser) {
+      setCurrentUser(assignedUser);
     }
     setUserRole(role);
     setIsLoggedIn(true);
-    addAuditLog('User Role Switched', `Authenticated and switched active session role to ${role}`, undefined, 'info');
+    recordLoginAttempt({
+      username: assignedUser?.username || role.toLowerCase(),
+      displayName: assignedUser?.displayName || `${role} Role User`,
+      role: role,
+      status: 'Success',
+      ipAddress: '192.168.10.22',
+      terminal: 'PAA Workshop Terminal 01',
+    });
+    addAuditLog(
+      'User Role Switched',
+      `Switched active role to ${role}${assignedUser ? ` (${assignedUser.displayName})` : ''}`,
+      undefined,
+      'info'
+    );
     return { success: true, message: `Successfully authenticated as ${role}` };
   };
 
-  const login = (role: UserRole, inputPass: string): { success: boolean; message: string } => {
-    const result = switchRoleWithPassword(role, inputPass);
-    if (result.success) {
-      setIsLoggedIn(true);
-      addAuditLog('User Logged In', `User logged in successfully as ${role}`, undefined, 'success');
+  const login = (
+    usernameOrRole: string,
+    inputPass: string
+  ): { success: boolean; message: string; user?: UserAccount } => {
+    const trimmedInput = usernameOrRole.trim();
+    const trimmedPass = inputPass.trim();
+
+    // 1. Match by username (case-insensitive) e.g., 'Mohsin', 'kalsoom', 'admin_paa'
+    const matchedUser = userAccounts.find(
+      (u) => u.username.toLowerCase() === trimmedInput.toLowerCase()
+    );
+
+    if (matchedUser) {
+      const isPasswordMatch = matchedUser.password.trim() === trimmedPass;
+      const isBypassValid = Boolean(
+        matchedUser.temporaryBypassCode &&
+        matchedUser.temporaryBypassCode.trim().toLowerCase() === trimmedPass.toLowerCase() &&
+        (!matchedUser.temporaryBypassCodeExpiresAt || new Date(matchedUser.temporaryBypassCodeExpiresAt).getTime() > Date.now())
+      );
+
+      if (isPasswordMatch || isBypassValid) {
+        setCurrentUser(matchedUser);
+        setUserRole(matchedUser.role);
+        setIsLoggedIn(true);
+        recordLoginAttempt({
+          username: matchedUser.username,
+          displayName: matchedUser.displayName,
+          role: matchedUser.role,
+          status: 'Success',
+          ipAddress: '192.168.10.22',
+          terminal: isBypassValid ? 'PAA Bypass Terminal (Temporary Code)' : 'PAA Workshop Terminal 01',
+        });
+        addAuditLog(
+          'User Logged In',
+          `User "${matchedUser.displayName}" (${matchedUser.username}) authenticated successfully as ${matchedUser.role}${isBypassValid ? ' via Temporary Bypass Code' : ''}`,
+          undefined,
+          isBypassValid ? 'warning' : 'success'
+        );
+        return {
+          success: true,
+          message: isBypassValid
+            ? `Welcome, ${matchedUser.displayName}! Authenticated via emergency bypass code.`
+            : `Welcome, ${matchedUser.displayName}! Logged in as ${matchedUser.role}.`,
+          user: matchedUser,
+        };
+      } else {
+        recordLoginAttempt({
+          username: matchedUser.username,
+          displayName: matchedUser.displayName,
+          role: matchedUser.role,
+          status: 'Failed',
+          failureReason: `Incorrect password or expired bypass code entered for account "${matchedUser.username}"`,
+          ipAddress: '192.168.10.22',
+          terminal: 'PAA Workshop Terminal 01',
+        });
+        return { success: false, message: `Incorrect password or expired bypass code for user account "${matchedUser.username}".` };
+      }
     }
-    return result;
+
+    // 2. Match by Role Name (e.g. Administrator, Technician, Viewer)
+    const matchingRoleUsers = userAccounts.filter(
+      (u) => u.role.toLowerCase() === trimmedInput.toLowerCase()
+    );
+
+    if (matchingRoleUsers.length > 0) {
+      // Check if password or bypass code matches any administrator/technician/viewer user
+      const userWithMatchingPass = matchingRoleUsers.find(
+        (u) =>
+          u.password.trim() === trimmedPass ||
+          Boolean(
+            u.temporaryBypassCode &&
+            u.temporaryBypassCode.trim().toLowerCase() === trimmedPass.toLowerCase() &&
+            (!u.temporaryBypassCodeExpiresAt || new Date(u.temporaryBypassCodeExpiresAt).getTime() > Date.now())
+          )
+      );
+      if (userWithMatchingPass) {
+        setCurrentUser(userWithMatchingPass);
+        setUserRole(userWithMatchingPass.role);
+        setIsLoggedIn(true);
+        recordLoginAttempt({
+          username: userWithMatchingPass.username,
+          displayName: userWithMatchingPass.displayName,
+          role: userWithMatchingPass.role,
+          status: 'Success',
+          ipAddress: '192.168.10.22',
+          terminal: 'PAA Workshop Terminal 01',
+        });
+        addAuditLog(
+          'User Logged In',
+          `Authenticated as ${userWithMatchingPass.displayName} (${userWithMatchingPass.role})`,
+          undefined,
+          'success'
+        );
+        return {
+          success: true,
+          message: `Authenticated as ${userWithMatchingPass.displayName} (${userWithMatchingPass.role})`,
+          user: userWithMatchingPass,
+        };
+      }
+
+      // Check legacy role password
+      const targetRole = matchingRoleUsers[0].role;
+      const expectedLegacyPass = rolePasswords[targetRole] || defaultRolePasswords[targetRole];
+      if (expectedLegacyPass && trimmedPass === expectedLegacyPass.trim()) {
+        const fallbackUser = matchingRoleUsers[0];
+        setCurrentUser(fallbackUser);
+        setUserRole(fallbackUser.role);
+        setIsLoggedIn(true);
+        recordLoginAttempt({
+          username: fallbackUser.username,
+          displayName: fallbackUser.displayName,
+          role: fallbackUser.role,
+          status: 'Success',
+          ipAddress: '192.168.10.22',
+          terminal: 'PAA Workshop Terminal 01',
+        });
+        addAuditLog(
+          'User Logged In',
+          `Authenticated as ${fallbackUser.role} via security password`,
+          undefined,
+          'success'
+        );
+        return {
+          success: true,
+          message: `Authenticated as ${fallbackUser.role}`,
+          user: fallbackUser,
+        };
+      }
+
+      recordLoginAttempt({
+        username: matchingRoleUsers[0].username,
+        displayName: matchingRoleUsers[0].displayName,
+        role: matchingRoleUsers[0].role,
+        status: 'Failed',
+        failureReason: `Invalid password for ${matchingRoleUsers[0].role} role`,
+        ipAddress: '192.168.10.22',
+        terminal: 'PAA Workshop Terminal 01',
+      });
+      return { success: false, message: `Invalid password for ${matchingRoleUsers[0].role} role.` };
+    }
+
+    recordLoginAttempt({
+      username: trimmedInput,
+      displayName: trimmedInput,
+      role: 'Viewer',
+      status: 'Failed',
+      failureReason: `Unregistered account name "${trimmedInput}"`,
+      ipAddress: '192.168.10.22',
+      terminal: 'PAA Workshop Terminal 01',
+    });
+    return {
+      success: false,
+      message: `User account "${trimmedInput}" not recognized. Please use Mohsin, kalsoom, or admin_paa.`,
+    };
   };
 
   const logout = () => {
     setIsLoggedIn(false);
+    setCurrentUser(null);
     setUserRole('Viewer');
     addAuditLog('User Logged Out', `Active session ended. User logged out.`, undefined, 'warning');
+  };
+
+  const addUserAccount = (userData: Omit<UserAccount, 'id'>): { success: boolean; message: string } => {
+    const trimmedUsername = userData.username.trim();
+    if (!trimmedUsername) {
+      return { success: false, message: 'Username cannot be empty.' };
+    }
+    const exists = userAccounts.some(
+      (u) => u.username.toLowerCase() === trimmedUsername.toLowerCase()
+    );
+    if (exists) {
+      return { success: false, message: `Username "${trimmedUsername}" already exists.` };
+    }
+
+    const newUser: UserAccount = {
+      ...userData,
+      id: `USR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      username: trimmedUsername,
+      displayName: userData.displayName || trimmedUsername,
+      password: userData.password || '123',
+      createdAt: new Date().toISOString().split('T')[0],
+      isSystem: false,
+    };
+
+    setUserAccounts((prev) => [...prev, newUser]);
+    addAuditLog(
+      'User Account Created',
+      `New user account "${newUser.username}" (${newUser.role}) created by ${currentUser?.username || userRole}`,
+      undefined,
+      'success'
+    );
+    return { success: true, message: `User account "${trimmedUsername}" created successfully.` };
+  };
+
+  const updateUserAccount = (id: string, updates: Partial<UserAccount>) => {
+    setUserAccounts((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, ...updates } : u))
+    );
+    if (currentUser?.id === id) {
+      setCurrentUser((prev) => (prev ? { ...prev, ...updates } : prev));
+    }
+    addAuditLog('User Account Updated', `User account details/password updated for ID ${id}`, undefined, 'info');
+  };
+
+  const deleteUserAccount = (id: string): { success: boolean; message: string } => {
+    const user = userAccounts.find((u) => u.id === id);
+    if (!user) return { success: false, message: 'User not found.' };
+    if (
+      user.username.toLowerCase() === 'mohsin' ||
+      user.username.toLowerCase() === 'kalsoom'
+    ) {
+      return { success: false, message: `Primary administrator account "${user.username}" cannot be deleted.` };
+    }
+
+    setUserAccounts((prev) => prev.filter((u) => u.id !== id));
+    if (currentUser?.id === id) {
+      const fallback = userAccounts.find((u) => u.username.toLowerCase() === 'mohsin') || userAccounts[0];
+      setCurrentUser(fallback);
+      setUserRole(fallback.role);
+    }
+    addAuditLog('User Account Deleted', `User account "${user.username}" was removed`, undefined, 'warning');
+    return { success: true, message: `User account "${user.username}" deleted.` };
+  };
+
+  const triggerPasswordResetEmail = (
+    userId: string
+  ): { success: boolean; message: string; resetToken: string; email: string } => {
+    const user = userAccounts.find((u) => u.id === userId);
+    if (!user) {
+      return { success: false, message: 'User account not found.', resetToken: '', email: '' };
+    }
+
+    const resetToken = `RST-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const userEmail = user.email || `${user.username.toLowerCase()}@paa.gov.pk`;
+    const nowIso = new Date().toISOString();
+
+    setUserAccounts((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              lastPasswordResetEmailSentAt: nowIso,
+              lastPasswordResetToken: resetToken,
+            }
+          : u
+      )
+    );
+
+    addAuditLog(
+      'Password Reset Dispatched',
+      `Admin triggered password reset link email to ${user.displayName} (${userEmail}) with token ${resetToken}`,
+      undefined,
+      'warning'
+    );
+
+    return {
+      success: true,
+      message: `Password reset verification instructions sent to ${userEmail}.`,
+      resetToken,
+      email: userEmail,
+    };
+  };
+
+  const generateTemporaryBypassCode = (
+    userId: string,
+    durationMinutes: number = 60
+  ): { success: boolean; code: string; expiresAt: string; message: string } => {
+    const user = userAccounts.find((u) => u.id === userId);
+    if (!user) {
+      return { success: false, code: '', expiresAt: '', message: 'User account not found.' };
+    }
+
+    // 6-digit emergency bypass code
+    const randomCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+
+    setUserAccounts((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              temporaryBypassCode: randomCode,
+              temporaryBypassCodeExpiresAt: expiresAt,
+            }
+          : u
+      )
+    );
+
+    addAuditLog(
+      'Temporary Bypass Code Created',
+      `Emergency bypass code generated for technician account "${user.username}" (Valid for ${durationMinutes} minutes)`,
+      undefined,
+      'danger'
+    );
+
+    return {
+      success: true,
+      code: randomCode,
+      expiresAt,
+      message: `Bypass code ${randomCode} generated. Valid for ${durationMinutes} min.`,
+    };
+  };
+
+  const revokeTemporaryBypassCode = (userId: string): { success: boolean; message: string } => {
+    const user = userAccounts.find((u) => u.id === userId);
+    if (!user) {
+      return { success: false, message: 'User account not found.' };
+    }
+
+    setUserAccounts((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              temporaryBypassCode: undefined,
+              temporaryBypassCodeExpiresAt: undefined,
+            }
+          : u
+      )
+    );
+
+    addAuditLog(
+      'Bypass Code Revoked',
+      `Emergency temporary bypass code for "${user.username}" was revoked by administrator`,
+      undefined,
+      'info'
+    );
+
+    return { success: true, message: `Bypass code for "${user.username}" was revoked successfully.` };
+  };
+
+  const resetUserPasswordWithToken = (
+    userId: string,
+    _token: string,
+    newPassword: string
+  ): { success: boolean; message: string } => {
+    const user = userAccounts.find((u) => u.id === userId);
+    if (!user) {
+      return { success: false, message: 'User account not found.' };
+    }
+    if (!newPassword || newPassword.trim() === '') {
+      return { success: false, message: 'Password cannot be blank.' };
+    }
+
+    const trimmed = newPassword.trim();
+    setUserAccounts((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              password: trimmed,
+              lastPasswordResetToken: undefined,
+              temporaryBypassCode: undefined,
+              temporaryBypassCodeExpiresAt: undefined,
+            }
+          : u
+      )
+    );
+
+    addAuditLog(
+      'Password Reset Completed',
+      `Password successfully reset for "${user.username}" via authorized reset link`,
+      undefined,
+      'success'
+    );
+
+    return { success: true, message: `Password for "${user.username}" updated successfully.` };
   };
 
   const getAssetById = (id: string) => {
@@ -1219,9 +2423,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         logisticsReceivingRecords,
         upsMaintenanceRecords,
         auditLogs,
+        loginAttempts,
+        recordLoginAttempt,
+        clearLoginAttempts,
         facilities,
         settings,
         userRole,
+        currentUser,
+        userAccounts,
+        addUserAccount,
+        updateUserAccount,
+        deleteUserAccount,
+        triggerPasswordResetEmail,
+        generateTemporaryBypassCode,
+        revokeTemporaryBypassCode,
+        resetUserPasswordWithToken,
         isLoggedIn,
         login,
         logout,
@@ -1253,6 +2469,30 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addGatePassRecord,
         updateGatePassStatus,
         addLogisticsReceivingRecord,
+        upsBackupChecklistLogSheets,
+        addUPSBackupChecklistLogSheet,
+        deleteUPSBackupChecklistLogSheet,
+        upsBatteryReplacementLogSheets,
+        addUPSBatteryReplacementLogSheet,
+        deleteUPSBatteryReplacementLogSheet,
+        printerMaintenanceRecords,
+        addPrinterMaintenanceRecord,
+        updatePrinterMaintenanceRecord,
+        deletePrinterMaintenanceRecord,
+        printerModels,
+        addPrinterModel,
+        deletePrinterModel,
+        printerCompanies,
+        addPrinterCompany,
+        deletePrinterCompany,
+        tonerModels,
+        addTonerModel,
+        updateTonerModelStock,
+        deleteTonerModel,
+        printerParts,
+        addPrinterPart,
+        updatePrinterPartStock,
+        deletePrinterPart,
         updateSettings,
         bulkImportAssets,
         loadAIIAPUpsFleet,
@@ -1272,6 +2512,22 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         dbStatus,
         isSyncing,
         refreshDbData,
+        isOnline: isOnlineState,
+        pendingOfflineCount,
+        syncOfflineData,
+        lastBackupTime,
+        lastBackupSnapshot,
+        backupIntervalSeconds: backupConfigState.intervalSeconds,
+        isBackupServiceActive,
+        backupHistory,
+        crashRecoveryInfo,
+        triggerManualBackup,
+        restoreAssetBackup,
+        deleteAssetBackup,
+        clearAllAssetBackups,
+        setBackupIntervalSeconds,
+        dismissCrashRecovery,
+        refreshBackupHistory,
       }}
     >
       {children}

@@ -418,7 +418,7 @@ export function convertAIIAPRowToAsset(row: AIIAPUpsRow, index: number): AssetIt
     status: isHealthy ? 'Active' : 'Under Repair',
     isRemoved: false,
     images: {
-      devicePhoto: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80',
+      devicePhoto: '/eaton_dx1000.webp',
     },
     upsSpecs: {
       modelNo: row.modelNo,

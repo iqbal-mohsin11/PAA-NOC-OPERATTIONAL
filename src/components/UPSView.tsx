@@ -779,13 +779,23 @@ export const UPSView: React.FC<UPSViewProps> = ({
 
                         {/* MODEL NO */}
                         <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
-                          <button
-                            type="button"
-                            onClick={() => onSelectAsset?.(asset)}
-                            className="hover:text-amber-600 hover:underline text-left"
-                          >
-                            {model}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={asset.images?.devicePhoto || '/eaton_dx1000.webp'}
+                              alt=""
+                              className="h-8 w-8 rounded-lg object-contain border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800 shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/eaton_dx1000.webp';
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onSelectAsset?.(asset)}
+                              className="hover:text-amber-600 hover:underline text-left"
+                            >
+                              {model}
+                            </button>
+                          </div>
                         </td>
 
                         {/* SERIAL NO */}
@@ -983,17 +993,29 @@ export const UPSView: React.FC<UPSViewProps> = ({
                     </span>
                   </div>
 
-                  {/* Title & Model */}
-                  <div className="mt-3.5 space-y-1">
-                    <h3 className="font-extrabold text-slate-900 dark:text-white text-sm line-clamp-1 group-hover:text-amber-600 transition">
-                      {asset.name}
-                    </h3>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="font-bold text-slate-700 dark:text-slate-300">
-                        {asset.upsSpecs?.modelNo || asset.model}
-                      </span>
-                      <span>•</span>
-                      <span>CRN: {crn || 'N/A'}</span>
+                  {/* Title & Model with Device Thumbnail */}
+                  <div className="mt-3.5 flex items-center gap-3">
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-800/80 flex items-center justify-center shadow-xs">
+                      <img
+                        src={asset.images?.devicePhoto || '/eaton_dx1000.webp'}
+                        alt={asset.name}
+                        className="h-full w-full object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/eaton_dx1000.webp';
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <h3 className="font-extrabold text-slate-900 dark:text-white text-sm line-clamp-1 group-hover:text-amber-600 transition">
+                        {asset.name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          {asset.upsSpecs?.modelNo || asset.model}
+                        </span>
+                        <span>•</span>
+                        <span>CRN: {crn || 'N/A'}</span>
+                      </div>
                     </div>
                   </div>
 

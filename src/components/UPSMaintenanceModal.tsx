@@ -15,6 +15,7 @@ import {
   FileText,
   Activity,
 } from 'lucide-react';
+import { TechnicianSelectDropdown } from './TechnicianSelectDropdown';
 
 interface UPSMaintenanceModalProps {
   isOpen: boolean;
@@ -550,15 +551,10 @@ export const UPSMaintenanceModal: React.FC<UPSMaintenanceModalProps> = ({
             {/* Engineer & Description */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Certified Avionics / Power Engineer
-                </label>
-                <input
-                  type="text"
+                <TechnicianSelectDropdown
                   value={engineer}
-                  onChange={(e) => setEngineer(e.target.value)}
-                  placeholder="e.g. Engr. Tariq Aziz (ATC Tech In-charge)"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  onChange={setEngineer}
+                  label="Assigned Technician / Certified Engineer"
                   required
                 />
               </div>

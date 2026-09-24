@@ -22,28 +22,40 @@ import {
   Tag,
   Store,
   Layers,
+  LayoutGrid,
+  List,
+  User,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AssetListProps {
   onOpenAddModal: () => void;
-  onOpenEditModal: (asset: AssetItem) => void;
+  onOpenEditModal?: (asset: AssetItem) => void;
+  onEditAsset?: (asset: AssetItem) => void;
   onSelectAsset: (asset: AssetItem) => void;
-  onOpenExcelImport: () => void;
-  onOpenLabelModal: (asset?: AssetItem) => void;
-  onOpenSoftRemoveModal: (asset: AssetItem) => void;
-  onOpenIssueModal: (asset: AssetItem) => void;
+  onOpenExcelImport?: () => void;
+  onOpenImportModal?: () => void;
+  onOpenLabelModal?: (asset?: AssetItem) => void;
+  onOpenSoftRemoveModal?: (asset: AssetItem) => void;
+  onSoftRemove?: (asset: AssetItem) => void;
+  onOpenIssueModal?: (asset: AssetItem) => void;
 }
 
 export const AssetList: React.FC<AssetListProps> = ({
   onOpenAddModal,
   onOpenEditModal,
+  onEditAsset,
   onSelectAsset,
   onOpenExcelImport,
+  onOpenImportModal,
   onOpenLabelModal,
   onOpenSoftRemoveModal,
+  onSoftRemove,
   onOpenIssueModal,
 }) => {
+  const handleEdit = onOpenEditModal || onEditAsset;
+  const handleSoftRemove = onOpenSoftRemoveModal || onSoftRemove;
+  const handleImport = onOpenExcelImport || onOpenImportModal;
   const {
     assets,
     searchQuery,
@@ -65,6 +77,12 @@ export const AssetList: React.FC<AssetListProps> = ({
   const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [authRoleModal, setAuthRoleModal] = useState<'Administrator' | 'Technician' | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return 'cards';
+    }
+    return 'table';
+  });
 
   const categories: DeviceCategory[] = Array.from(
     new Set([...allCategories, 'Keyboard', 'Mouse', 'Keyboard & Mouse'])
@@ -227,7 +245,7 @@ export const AssetList: React.FC<AssetListProps> = ({
           </button>
 
           <button
-            onClick={() => onOpenLabelModal()}
+            onClick={() => onOpenLabelModal && onOpenLabelModal()}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             <QrCode className="h-4 w-4 text-amber-500" />
@@ -308,176 +326,345 @@ export const AssetList: React.FC<AssetListProps> = ({
         </div>
       </div>
 
-      {/* Main Asset Table */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase font-bold text-slate-400 dark:border-slate-800 dark:bg-slate-800/50">
-                <th className="py-3 px-4">Asset ID / Tag</th>
-                <th className="py-3 px-4">Device Name & Brand</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Department</th>
-                <th className="py-3 px-4">Assigned User</th>
-                <th className="py-3 px-4">IP / MAC</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredAssets.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <HardDrive className="mx-auto h-8 w-8 opacity-40 mb-2" />
-                    <p className="font-semibold">No assets found matching filter criteria.</p>
-                    <p className="text-[11px] text-slate-500 mt-1">Try clearing filters or search keywords.</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredAssets.map((asset) => {
-                  const ipAddr = asset.systemSpecs?.ipAddress || asset.networkSpecs?.managementIp || '—';
-                  const macAddr = asset.systemSpecs?.macAddress || '—';
+      {/* Results Count & View Mode Switcher (Mobile Cards vs Table) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span>
+            Showing <strong className="text-slate-800 dark:text-slate-200">{filteredAssets.length}</strong> of{' '}
+            <strong className="text-slate-800 dark:text-slate-200">{assets.filter((a) => !a.isRemoved).length}</strong> Active Assets
+          </span>
+        </div>
 
-                  return (
-                    <tr key={asset.id} className="hover:bg-slate-50/80 transition dark:hover:bg-slate-800/40">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                        <div
-                          onClick={() => onSelectAsset(asset)}
-                          className="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
-                        >
-                          <div>{asset.id}</div>
-                          <div className="text-[10px] font-medium text-slate-400">{asset.assetTag}</div>
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4">
-                        <div onClick={() => onSelectAsset(asset)} className="cursor-pointer">
-                          <div className="font-bold text-slate-800 dark:text-slate-200 hover:text-emerald-600">
-                            {asset.name}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            {asset.brand} {asset.model} • SN: {asset.serialNumber}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">
-                        <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                          {asset.category}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 font-bold text-emerald-700 dark:text-emerald-400">
-                        {asset.department}
-                      </td>
-
-                      <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
-                        {asset.assignedUser}
-                      </td>
-
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
-                        <div>{ipAddr}</div>
-                        <div className="text-[9px] text-slate-400">{macAddr}</div>
-                      </td>
-
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
-                            asset.status === 'Active'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
-                              : asset.status === 'Spare'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
-                              : asset.status === 'Under Repair'
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
-                              : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
-                          }`}
-                        >
-                          {asset.status}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 text-center">
-                        <div className="relative inline-block text-left">
-                          <button
-                            onClick={() => setActiveMenuId(activeMenuId === asset.id ? null : asset.id)}
-                            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-
-                          {activeMenuId === asset.id && (
-                            <div
-                              onMouseLeave={() => setActiveMenuId(null)}
-                              className="absolute right-0 top-8 z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900"
-                            >
-                              <button
-                                onClick={() => {
-                                  onSelectAsset(asset);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                <span>View Details</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  onOpenEditModal(asset);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                <Edit className="h-3.5 w-3.5 text-blue-500" />
-                                <span>Edit Record</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  onOpenIssueModal(asset);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                <Wrench className="h-3.5 w-3.5 text-amber-500" />
-                                <span>Report Ticket</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  onOpenLabelModal(asset);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                <QrCode className="h-3.5 w-3.5 text-cyan-500" />
-                                <span>Print Label</span>
-                              </button>
-
-                              <div className="my-1 border-t border-slate-100 dark:border-slate-800"></div>
-
-                              <button
-                                onClick={() => {
-                                  onOpenSoftRemoveModal(asset);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                <span>Remove Item</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setViewMode('cards')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              viewMode === 'cards'
+                ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-400'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Mobile Cards</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              viewMode === 'table'
+                ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-400'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            <List className="h-3.5 w-3.5" />
+            <span>Table View</span>
+          </button>
         </div>
       </div>
+
+      {/* Main Asset View: Mobile Cards or Full Table */}
+      {viewMode === 'cards' ? (
+        <div className="space-y-3">
+          {filteredAssets.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-slate-400 dark:border-slate-800 dark:bg-slate-900 shadow-sm">
+              <HardDrive className="mx-auto h-8 w-8 opacity-40 mb-2" />
+              <p className="font-semibold">No assets found matching filter criteria.</p>
+              <p className="text-[11px] text-slate-500 mt-1">Try clearing filters or search keywords.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredAssets.map((asset) => {
+                const ipAddr = asset.systemSpecs?.ipAddress || asset.networkSpecs?.managementIp || null;
+                const macAddr = asset.systemSpecs?.macAddress || null;
+
+                return (
+                  <div
+                    key={asset.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-600 transition flex flex-col justify-between gap-3"
+                  >
+                    {/* Card Top */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div
+                          onClick={() => onSelectAsset(asset)}
+                          className="cursor-pointer font-mono text-sm font-bold text-slate-900 hover:text-emerald-600 dark:text-white dark:hover:text-emerald-400 flex items-center gap-1.5"
+                        >
+                          <span className="truncate">{asset.id}</span>
+                          <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 font-sans shrink-0">
+                            {asset.assetTag}
+                          </span>
+                        </div>
+                        <h4
+                          onClick={() => onSelectAsset(asset)}
+                          className="cursor-pointer text-xs font-bold text-slate-800 hover:text-emerald-600 dark:text-slate-200 mt-1 line-clamp-1"
+                        >
+                          {asset.name}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {asset.brand} {asset.model} • SN: {asset.serialNumber}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-extrabold shrink-0 ${
+                          asset.status === 'Active'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                            : asset.status === 'Spare'
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+                            : asset.status === 'Under Repair'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+                            : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
+                        }`}
+                      >
+                        {asset.status}
+                      </span>
+                    </div>
+
+                    {/* Card Metadata Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs border-y border-slate-100 dark:border-slate-800/80 py-2.5">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Department</span>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 text-xs truncate block">
+                          {asset.department}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Assigned User</span>
+                        <span className="font-medium text-slate-700 dark:text-slate-300 text-xs truncate block">
+                          {asset.assignedUser || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Category</span>
+                        <span className="inline-block font-semibold text-slate-700 dark:text-slate-300 text-xs truncate">
+                          {asset.category}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">IP Address</span>
+                        <span className="font-mono text-xs text-slate-600 dark:text-slate-400 truncate block">
+                          {ipAddr || '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Touch Friendly Action Buttons with >=44px touch targets */}
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onSelectAsset(asset)}
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 py-2.5 px-3 text-xs font-bold text-slate-700 dark:text-slate-200 transition min-h-[44px] active:scale-[0.98]"
+                      >
+                        <Eye className="h-4 w-4 text-emerald-500" />
+                        <span>Inspect</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleEdit && handleEdit(asset)}
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 py-2.5 px-3 text-xs font-bold text-blue-700 dark:text-blue-300 transition min-h-[44px] active:scale-[0.98]"
+                      >
+                        <Edit className="h-4 w-4 text-blue-500" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenLabelModal && onOpenLabelModal(asset)}
+                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition shrink-0 min-h-[44px] min-w-[44px] active:scale-[0.98]"
+                        title="Print QR Asset Label"
+                      >
+                        <QrCode className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenIssueModal && onOpenIssueModal(asset)}
+                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 transition shrink-0 min-h-[44px] min-w-[44px] active:scale-[0.98]"
+                        title="Report Ticket / Grief"
+                      >
+                        <Wrench className="h-4 w-4 text-amber-500" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Main Asset Table */
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50 text-[10px] uppercase font-bold text-slate-400 dark:border-slate-800 dark:bg-slate-800/50">
+                  <th className="py-3 px-4">Asset ID / Tag</th>
+                  <th className="py-3 px-4">Device Name & Brand</th>
+                  <th className="py-3 px-4">Category</th>
+                  <th className="py-3 px-4">Department</th>
+                  <th className="py-3 px-4">Assigned User</th>
+                  <th className="py-3 px-4">IP / MAC</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredAssets.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                      <HardDrive className="mx-auto h-8 w-8 opacity-40 mb-2" />
+                      <p className="font-semibold">No assets found matching filter criteria.</p>
+                      <p className="text-[11px] text-slate-500 mt-1">Try clearing filters or search keywords.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAssets.map((asset) => {
+                    const ipAddr = asset.systemSpecs?.ipAddress || asset.networkSpecs?.managementIp || '—';
+                    const macAddr = asset.systemSpecs?.macAddress || '—';
+
+                    return (
+                      <tr key={asset.id} className="hover:bg-slate-50/80 transition dark:hover:bg-slate-800/40">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                          <div
+                            onClick={() => onSelectAsset(asset)}
+                            className="cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
+                          >
+                            <div>{asset.id}</div>
+                            <div className="text-[10px] font-medium text-slate-400">{asset.assetTag}</div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div onClick={() => onSelectAsset(asset)} className="cursor-pointer">
+                            <div className="font-bold text-slate-800 dark:text-slate-200 hover:text-emerald-600">
+                              {asset.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {asset.brand} {asset.model} • SN: {asset.serialNumber}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 font-semibold text-slate-700 dark:text-slate-300">
+                          <span className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            {asset.category}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 font-bold text-emerald-700 dark:text-emerald-400">
+                          {asset.department}
+                        </td>
+
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
+                          {asset.assignedUser}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                          <div>{ipAddr}</div>
+                          <div className="text-[9px] text-slate-400">{macAddr}</div>
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
+                              asset.status === 'Active'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                                : asset.status === 'Spare'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+                                : asset.status === 'Under Repair'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+                                : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400'
+                            }`}
+                          >
+                            {asset.status}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          <div className="relative inline-block text-left">
+                            <button
+                              onClick={() => setActiveMenuId(activeMenuId === asset.id ? null : asset.id)}
+                              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+
+                            {activeMenuId === asset.id && (
+                              <div
+                                onMouseLeave={() => setActiveMenuId(null)}
+                                className="absolute right-0 top-8 z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900"
+                              >
+                                <button
+                                  onClick={() => {
+                                    onSelectAsset(asset);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                  <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                  <span>View Details</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    handleEdit && handleEdit(asset);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                  <Edit className="h-3.5 w-3.5 text-blue-500" />
+                                  <span>Edit Record</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    onOpenIssueModal && onOpenIssueModal(asset);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                  <Wrench className="h-3.5 w-3.5 text-amber-500" />
+                                  <span>Report Ticket</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    onOpenLabelModal && onOpenLabelModal(asset);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                  <QrCode className="h-3.5 w-3.5 text-cyan-500" />
+                                  <span>Print Label</span>
+                                </button>
+
+                                <div className="my-1 border-t border-slate-100 dark:border-slate-800"></div>
+
+                                <button
+                                  onClick={() => {
+                                    handleSoftRemove && handleSoftRemove(asset);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <span>Remove Item</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <AddDepartmentModal isOpen={isAddDeptOpen} onClose={() => setIsAddDeptOpen(false)} />
       <AddBrandModal isOpen={isAddBrandOpen} onClose={() => setIsAddBrandOpen(false)} />

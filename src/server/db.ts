@@ -20,6 +20,7 @@ export async function connectToDatabase(): Promise<boolean> {
     console.log(`[PAA Sentinel Server] Connecting to MongoDB at: ${uri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}...`);
     
     mongoose.set('strictQuery', false);
+    mongoose.set('bufferCommands', false);
     await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,

@@ -14,17 +14,37 @@ import {
   FileSpreadsheet,
   FileText,
   Loader2,
+  History,
+  Eye,
+  ArrowDownToLine,
+  Search,
+  Calendar,
+  AlertTriangle,
 } from 'lucide-react';
-import { UPSBatteryReplacementEntry } from '../types/inventory';
+import { UPSBatteryReplacementEntry, UPSBatteryReplacementLogSheet } from '../types/inventory';
 import { defaultUPSBatteryReplacementEntries } from '../data/upsFormsData';
 import { useInventory } from '../context/InventoryContext';
+import { UPSBatteryReplacementDetailModal } from './UPSBatteryReplacementDetailModal';
 
 interface UPSBatteryReplacementModalProps {
   onClose: () => void;
 }
 
 export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProps> = ({ onClose }) => {
-  const { assets } = useInventory();
+  const {
+    assets,
+    upsBatteryReplacementLogSheets,
+    addUPSBatteryReplacementLogSheet,
+    deleteUPSBatteryReplacementLogSheet,
+    currentUser,
+  } = useInventory();
+
+  const [activeTab, setActiveTab] = useState<'form' | 'logs'>('form');
+  const [selectedLogSheet, setSelectedLogSheet] = useState<UPSBatteryReplacementLogSheet | null>(null);
+  const [showSaveLogModal, setShowSaveLogModal] = useState(false);
+  const [logSheetNotes, setLogSheetNotes] = useState('');
+  const [customSheetNumber, setCustomSheetNumber] = useState('');
+  const [logSearchQuery, setLogSearchQuery] = useState('');
 
   // Load from localStorage or fall back to defaultUPSBatteryReplacementEntries
   const [entries, setEntries] = useState<UPSBatteryReplacementEntry[]>(() => {
@@ -116,6 +136,41 @@ export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProp
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleOpenSaveLogModal = () => {
+    const nextNum = upsBatteryReplacementLogSheets.length + 15;
+    setCustomSheetNumber(`PAA/IT/BATT-${String(nextNum).padStart(3, '0')}`);
+    setLogSheetNotes('');
+    setShowSaveLogModal(true);
+  };
+
+  const handleConfirmSaveLogSheet = () => {
+    const sheetNumber =
+      customSheetNumber.trim() ||
+      `PAA/IT/BATT-${String(upsBatteryReplacementLogSheets.length + 15).padStart(3, '0')}`;
+
+    const newSheet = addUPSBatteryReplacementLogSheet({
+      sheetNumber,
+      title: 'DETAILS REPLACEMENT OF UPS BATTERIES INSTALLED AT DIFFERENT LOCATIONS',
+      entries: [...entries],
+      totalEntries: entries.length,
+      notes: logSheetNotes.trim() || undefined,
+      loggedByUser: currentUser?.name || currentUser?.username || 'NOC Tech',
+    });
+
+    handleSave(); // Syncs local draft
+    setShowSaveLogModal(false);
+    setStatusMessage(`Saved to Log Sheet ${newSheet.sheetNumber} (${entries.length} battery replacement rows)!`);
+    setTimeout(() => setStatusMessage(null), 5000);
+  };
+
+  const handleLoadSheetIntoEditor = (sheet: UPSBatteryReplacementLogSheet) => {
+    setEntries(sheet.entries);
+    setSelectedLogSheet(null);
+    setActiveTab('form');
+    setStatusMessage(`Loaded Log Sheet ${sheet.sheetNumber} into active replacement form editor.`);
+    setTimeout(() => setStatusMessage(null), 5000);
   };
 
   const handleExportCSV = () => {
@@ -477,10 +532,21 @@ export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProp
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-xs"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition shadow-xs"
+              title="Save current rows to local draft"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>Save Table</span>
+              <span>Save Draft</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenSaveLogModal}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-xs"
+              title="Save this replacement batch as an official timestamped log sheet"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Save to Log Sheet</span>
             </button>
 
             <button
@@ -519,6 +585,47 @@ export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProp
           </div>
         </div>
 
+        {/* Tab Navigation Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 dark:border-slate-800 dark:bg-slate-900/80 print:hidden">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('form')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'form'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Battery Replacement Form</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'logs'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Saved Log Sheets</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 font-extrabold">
+                {upsBatteryReplacementLogSheets.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            {activeTab === 'form' ? (
+              <span>Current Form: <strong>{entries.length}</strong> replacement rows</span>
+            ) : (
+              <span>Total Archive: <strong>{upsBatteryReplacementLogSheets.length}</strong> battery log sheets</span>
+            )}
+          </div>
+        </div>
+
         {/* Status notification toast/banner */}
         {statusMessage && (
           <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 print:hidden animate-fadeIn">
@@ -536,8 +643,9 @@ export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProp
           </div>
         )}
 
-        {/* Scrollable Printable Paper Container */}
-        <div className="flex-1 overflow-auto p-3 sm:p-6 bg-slate-50 dark:bg-slate-950/60 print:bg-white print:p-0 print:overflow-visible">
+        {/* Scrollable Printable Paper Container or Saved Log Sheets */}
+        {activeTab === 'form' ? (
+          <div className="flex-1 overflow-auto p-3 sm:p-6 bg-slate-50 dark:bg-slate-950/60 print:bg-white print:p-0 print:overflow-visible">
           <div className="mx-auto w-full max-w-5xl rounded-xl bg-white p-4 sm:p-8 shadow-sm border border-slate-200 dark:bg-slate-900 dark:border-slate-800 print:border-0 print:shadow-none print:p-0 print:max-w-none text-slate-900 dark:text-slate-100">
             
             {/* Sheet Title Matching Uploaded Image Exactly */}
@@ -688,6 +796,294 @@ export const UPSBatteryReplacementModal: React.FC<UPSBatteryReplacementModalProp
 
           </div>
         </div>
+        ) : (
+          /* Saved Battery Replacement Log Sheets History View */
+          <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-950/60 flex flex-col space-y-4">
+            {/* Top Filter & Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search battery log sheets by sheet #, notes, or equipment..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleOpenSaveLogModal}
+                  className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Current Form as Sheet</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List of Log Sheets */}
+            {upsBatteryReplacementLogSheets.filter((s) => {
+              if (!logSearchQuery.trim()) return true;
+              const q = logSearchQuery.toLowerCase();
+              return (
+                s.sheetNumber.toLowerCase().includes(q) ||
+                (s.notes && s.notes.toLowerCase().includes(q)) ||
+                (s.loggedByUser && s.loggedByUser.toLowerCase().includes(q)) ||
+                s.entries.some(
+                  (e) =>
+                    e.itemDescription.toLowerCase().includes(q) ||
+                    e.location.toLowerCase().includes(q) ||
+                    e.remarks.toLowerCase().includes(q)
+                )
+              );
+            }).length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-3">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Battery Log Sheets Found</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                  {logSearchQuery
+                    ? 'No log sheets match your search filter.'
+                    : 'No saved battery replacement log sheets yet. Click "Save to Log Sheet" on the form to preserve a permanent replacement audit.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenSaveLogModal}
+                  className="mt-4 px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-500 transition"
+                >
+                  Save Current Form as Log Sheet
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {upsBatteryReplacementLogSheets
+                  .filter((s) => {
+                    if (!logSearchQuery.trim()) return true;
+                    const q = logSearchQuery.toLowerCase();
+                    return (
+                      s.sheetNumber.toLowerCase().includes(q) ||
+                      (s.notes && s.notes.toLowerCase().includes(q)) ||
+                      (s.loggedByUser && s.loggedByUser.toLowerCase().includes(q)) ||
+                      s.entries.some(
+                        (e) =>
+                          e.itemDescription.toLowerCase().includes(q) ||
+                          e.location.toLowerCase().includes(q) ||
+                          e.remarks.toLowerCase().includes(q)
+                      )
+                    );
+                  })
+                  .map((sheet) => {
+                    const filledEntries = sheet.entries.filter(
+                      (e) => e.itemDescription && e.itemDescription !== 'UPS-'
+                    );
+
+                    return (
+                      <div
+                        key={sheet.id}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="px-2 py-0.5 text-xs font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 rounded border border-amber-200 dark:border-amber-800">
+                                  {sheet.sheetNumber}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {new Date(sheet.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white mt-1">
+                                {sheet.title}
+                              </h4>
+                            </div>
+
+                            <span className="inline-flex items-center text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
+                              <BatteryCharging className="w-3 h-3 mr-1" />
+                              {sheet.totalEntries} rows
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Saved Date</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {new Date(sheet.createdAt).toLocaleDateString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Active Records</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {filledEntries.length} replacement entries
+                              </span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-slate-400 block text-[10px]">Sample Locations</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                                {sheet.entries
+                                  .map((e) => e.location)
+                                  .filter(Boolean)
+                                  .slice(0, 3)
+                                  .join(', ') || 'Various Airport Locations'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {sheet.notes && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2">
+                              &ldquo;{sheet.notes}&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-400 truncate">
+                            Logged by: {sheet.loggedByUser || 'NOC Tech'}
+                          </span>
+
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLogSheet(sheet)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-xs font-semibold transition"
+                              title="View complete itemized replacement sheet"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View Detail</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleLoadSheetIntoEditor(sheet)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs font-semibold transition"
+                              title="Load items from this sheet into live form editor"
+                            >
+                              <ArrowDownToLine className="w-3 h-3" />
+                              <span>Load</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Delete saved log sheet ${sheet.sheetNumber}?`)) {
+                                  deleteUPSBatteryReplacementLogSheet(sheet.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded transition"
+                              title="Delete this saved log sheet"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quick Modal: Save Current Form to Official Battery Log Sheet */}
+        {showSaveLogModal && (
+          <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4 animate-scaleUp">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <BatteryCharging className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Save Battery Log Sheet</h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Archives current replacement table into audit history</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSaveLogModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                    Log Sheet Number / Batch Code
+                  </label>
+                  <input
+                    type="text"
+                    value={customSheetNumber}
+                    onChange={(e) => setCustomSheetNumber(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    placeholder="e.g. PAA/IT/BATT-016"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Total Rows:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{entries.length} rows</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Logged By:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">
+                      {currentUser?.name || currentUser?.username || 'NOC Tech'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                    Batch Replacement Notes / Work Order (Optional)
+                  </label>
+                  <textarea
+                    value={logSheetNotes}
+                    onChange={(e) => setLogSheetNotes(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    placeholder="e.g. Quarterly battery replacement for Terminal 1 radar and comms UPS units under WO-2026-44..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveLogModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSaveLogSheet}
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  Confirm & Save Log Sheet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Full Detail Viewer Modal for Selected Battery Log Sheet */}
+        {selectedLogSheet && (
+          <UPSBatteryReplacementDetailModal
+            sheet={selectedLogSheet}
+            onClose={() => setSelectedLogSheet(null)}
+            onLoadIntoEditor={handleLoadSheetIntoEditor}
+          />
+        )}
 
       </div>
     </div>

@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { UserAccount, UserRole } from '../types/inventory';
 import { AddDepartmentModal } from './AddDepartmentModal';
 import { AddBrandModal } from './AddBrandModal';
 import { AddVendorModal } from './AddVendorModal';
 import { AddCategoryModal } from './AddCategoryModal';
+import { LoginHistorySection } from './LoginHistorySection';
+import { CreateUserModal } from './CreateUserModal';
+import { ResetPasswordModal } from './ResetPasswordModal';
+import { LDAPConfigurationForm } from './LDAPConfigurationForm';
 import {
   Settings,
   Download,
@@ -22,7 +27,9 @@ import {
   Store,
   Layers,
   Lock,
+  Unlock,
   Key,
+  KeyRound,
   Eye,
   EyeOff,
   CheckCircle2,
@@ -33,7 +40,12 @@ import {
   Search,
   ExternalLink,
   AlertTriangle,
+  User,
+  UserCheck,
+  UserPlus,
+  Activity,
 } from 'lucide-react';
+import { loadMaintenanceSettings, saveMaintenanceSettings, loadTechnicians } from '../data/techniciansData';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -55,14 +67,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
     allCategories,
     rolePasswords,
     updateRolePasswords,
+    userAccounts,
+    addUserAccount,
+    updateUserAccount,
+    deleteUserAccount,
     assets,
     restoreAsset,
     deletePermanently,
+    userRole,
+    currentUser,
   } = useInventory();
 
   const [orgName, setOrgName] = useState(settings.organizationName);
   const [airportName, setAirportName] = useState(settings.airportName);
   const [code, setCode] = useState(settings.airportCode);
+  const [maintenanceSettings, setMaintenanceSettings] = useState(loadMaintenanceSettings());
+  const [techniciansList] = useState(loadTechnicians());
+  const [showLdapDetails, setShowLdapDetails] = useState(false);
 
   // Deleted Data Asset Entries State
   const [showDeletedList, setShowDeletedList] = useState(false);
@@ -93,6 +114,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
   };
 
   const handlePurgeAll = () => {
+    if (userRole !== 'Administrator') {
+      alert('Permission Denied: Technicians have Write Data & View Data access only. Permanent deletion is restricted to System Administrators.');
+      return;
+    }
     if (deletedAssets.length === 0) return;
     if (confirm(`CRITICAL WARNING: Permanently hard-delete all ${deletedAssets.length} soft-deleted asset records? This action CANNOT be undone.`)) {
       deletedAssets.forEach((item) => deletePermanently(item.id));
@@ -123,6 +148,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
       airportCode: code,
     });
     onClose();
+  };
+
+  // User Accounts State
+  const [editingPasswords, setEditingPasswords] = useState<Record<string, string>>({});
+  const [showUserPass, setShowUserPass] = useState<Record<string, boolean>>({});
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [resetUserTarget, setResetUserTarget] = useState<UserAccount | null>(null);
+  const [newUsername, setNewUsername] = useState('');
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newRole, setNewRole] = useState<UserRole>('Administrator');
+  const [newPassword, setNewPassword] = useState('');
+  const [userFeedbackMsg, setUserFeedbackMsg] = useState<string | null>(null);
+
+  const handleUpdateAccountPassword = (id: string) => {
+    const pass = editingPasswords[id];
+    if (!pass || pass.trim() === '') {
+      setUserFeedbackMsg('Password cannot be empty.');
+      setTimeout(() => setUserFeedbackMsg(null), 3000);
+      return;
+    }
+    updateUserAccount(id, { password: pass.trim() });
+    setUserFeedbackMsg(`Password updated successfully!`);
+    setTimeout(() => setUserFeedbackMsg(null), 3000);
+  };
+
+  const handleAddAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUsername.trim() || !newPassword.trim()) {
+      setUserFeedbackMsg('Username and password are required.');
+      return;
+    }
+    const result = addUserAccount({
+      username: newUsername.trim(),
+      displayName: newDisplayName.trim() || newUsername.trim(),
+      role: newRole,
+      password: newPassword.trim(),
+      email: `${newUsername.trim().toLowerCase()}@paa.gov.pk`,
+    });
+    if (!result.success) {
+      setUserFeedbackMsg(result.message);
+      return;
+    }
+    setUserFeedbackMsg(result.message);
+    setNewUsername('');
+    setNewDisplayName('');
+    setNewPassword('');
+    setIsAddUserOpen(false);
+    setTimeout(() => setUserFeedbackMsg(null), 3000);
+  };
+
+  const handleDeleteAccount = (id: string, username: string) => {
+    if (confirm(`Are you sure you want to delete user account "${username}"?`)) {
+      const result = deleteUserAccount(id);
+      if (!result.success) {
+        alert(result.message);
+      } else {
+        setUserFeedbackMsg(`User ${username} removed.`);
+        setTimeout(() => setUserFeedbackMsg(null), 3000);
+      }
+    }
   };
 
   const handleSavePasswords = () => {
@@ -207,23 +293,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
             </div>
           </div>
 
-          {/* Active Directory Sync Status */}
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+          {/* Active Directory Sync Configuration & Form */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-emerald-500" />
-                <span>Active Directory (AD) LDAPS Sync</span>
-              </h4>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                Connected
-              </span>
+              <div className="flex items-center gap-2">
+                <Server className="h-4 w-4 text-emerald-500" />
+                <h4 className="font-bold text-slate-800 dark:text-slate-200">
+                  Active Directory (AD) LDAP Directory Integration
+                </h4>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                  LDAPS 636
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowLdapDetails(!showLdapDetails)}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+                >
+                  {showLdapDetails ? 'Hide Details' : 'Configure LDAP Server'}
+                </button>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Domain: <code className="font-mono text-emerald-600 dark:text-emerald-400">paa.gov.pk</code> | Endpoint: <code className="font-mono">10.100.0.5:636</code>
+
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Manage Active Directory Domain Controller IP, LDAPS encryption, base DN, credentials, and target OUs for synchronization.
             </p>
-            <div className="mt-2.5 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Interval: Every 15 Minutes | 6 Delta Items Discovered</span>
-            </div>
+
+            {showLdapDetails && (
+              <div className="pt-3 border-t border-slate-200/60 dark:border-slate-700/60 animate-in fade-in">
+                <LDAPConfigurationForm onNavigateTab={onNavigateTab} />
+              </div>
+            )}
           </div>
 
           {/* Theme Switcher */}
@@ -250,6 +351,88 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
                 </>
               )}
             </button>
+          </div>
+
+          {/* Maintenance & Technician Operational Settings */}
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-xs">
+                <Wrench className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Maintenance Settings & Technician Activity Summary</span>
+              </h4>
+              {onNavigateTab && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onNavigateTab('maintenance');
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-500 shadow-sm transition"
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  <span>View Technician Dashboard</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-500 mb-3">
+              Configure preventive maintenance intervals, spend escalation thresholds, and assign default technicians ({techniciansList.length} active certified technicians in roster).
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Routine Maintenance Interval (Days)
+                </label>
+                <input
+                  type="number"
+                  value={maintenanceSettings.preventiveMaintenanceIntervalDays}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 30;
+                    const updated = { ...maintenanceSettings, preventiveMaintenanceIntervalDays: val };
+                    setMaintenanceSettings(updated);
+                    saveMaintenanceSettings(updated);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Supervisor Approval Threshold (PKR)
+                </label>
+                <input
+                  type="number"
+                  value={maintenanceSettings.approvalCostThresholdPkr}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 10000;
+                    const updated = { ...maintenanceSettings, approvalCostThresholdPkr: val };
+                    setMaintenanceSettings(updated);
+                    saveMaintenanceSettings(updated);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 font-bold font-mono dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Default Assigned Technician
+                </label>
+                <select
+                  value={maintenanceSettings.defaultAssignedTechnician}
+                  onChange={(e) => {
+                    const updated = { ...maintenanceSettings, defaultAssignedTechnician: e.target.value };
+                    setMaintenanceSettings(updated);
+                    saveMaintenanceSettings(updated);
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {techniciansList.map(t => (
+                    <option key={t.id} value={t.name}>{t.name} — {t.role} ({t.department})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Departments Directory Management */}
@@ -376,12 +559,285 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
             </div>
           </div>
 
+          {/* Administrator & User Accounts Security Section */}
+          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4 dark:border-rose-500/30 dark:bg-rose-950/20 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-rose-500" />
+                <div>
+                  <h4 className="font-bold text-rose-700 dark:text-rose-300 text-xs">
+                    User Accounts & Role Permissions
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Manage individual user credentials (Mohsin, kalsoom - Technician) and access scopes
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateUserModal(true)}
+                  className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 px-3 py-1.5 text-xs font-bold text-white hover:from-rose-500 hover:to-rose-400 shadow-sm transition"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>+ Add User / Admin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserOpen(!isAddUserOpen)}
+                  className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+                  title="Toggle Quick Form"
+                >
+                  {isAddUserOpen ? 'Hide Form' : 'Quick Form'}
+                </button>
+              </div>
+            </div>
+
+            {userFeedbackMsg && (
+              <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{userFeedbackMsg}</span>
+              </div>
+            )}
+
+            {/* Add User Account Inline Form */}
+            {isAddUserOpen && (
+              <form onSubmit={handleAddAccount} className="rounded-xl border border-rose-200 bg-white p-3.5 dark:border-rose-900/40 dark:bg-slate-900 space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <UserPlus className="h-4 w-4 text-rose-500" />
+                    Create New Administrator or User
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUserOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      User Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      placeholder="e.g. Mohsin, kalsoom"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Display Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newDisplayName}
+                      onChange={(e) => setNewDisplayName(e.target.value)}
+                      placeholder="Full Name"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-800 outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Account Role <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value as UserRole)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      <option value="Administrator">Administrator (Full Rights)</option>
+                      <option value="Technician">Technician (Asset Ops)</option>
+                      <option value="Viewer">Viewer (Read Only)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Password <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="e.g. 123"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUserOpen(false)}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-rose-600 px-4 py-1 text-xs font-bold text-white hover:bg-rose-500 shadow-xs"
+                  >
+                    Save User Account
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Existing Accounts Cards List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {userAccounts.map((acc) => {
+                const isAdmin = acc.role === 'Administrator';
+                const isProtected = ['usr-mohsin', 'usr-kalsoom', 'usr-admin'].includes(acc.id);
+                const currentVal = editingPasswords[acc.id] !== undefined ? editingPasswords[acc.id] : acc.password;
+                const isPassVisible = !!showUserPass[acc.id];
+
+                return (
+                  <div
+                    key={acc.id}
+                    className={`rounded-xl border p-3 flex flex-col justify-between ${
+                      isAdmin
+                        ? 'border-rose-200 bg-white/95 dark:border-rose-900/40 dark:bg-slate-900'
+                        : 'border-slate-200 bg-white/80 dark:border-slate-800 dark:bg-slate-900/70'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                          {isAdmin ? (
+                            <ShieldAlert className="h-4 w-4 text-rose-500" />
+                          ) : acc.role === 'Technician' ? (
+                            <Wrench className="h-4 w-4 text-amber-500" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-blue-500" />
+                          )}
+                          <span>{acc.username}</span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                            isAdmin
+                              ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                              : acc.role === 'Technician'
+                              ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
+                              : 'bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400'
+                          }`}>
+                            {acc.role}
+                          </span>
+                          {!isProtected && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAccount(acc.id, acc.username)}
+                              className="text-slate-400 hover:text-rose-600 p-0.5"
+                              title="Delete user account"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                        {acc.displayName} ({acc.email || `${acc.username.toLowerCase()}@paa.gov.pk`})
+                      </p>
+
+                      <div className="mb-2.5">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                          isAdmin
+                            ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50'
+                            : acc.role === 'Technician'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50'
+                            : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/50'
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${isAdmin ? 'bg-rose-500' : acc.role === 'Technician' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                          {isAdmin
+                            ? 'Full Administration'
+                            : acc.role === 'Technician'
+                            ? 'Write Data & View Data Only'
+                            : 'View Data Only'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          Password:
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <div className="relative flex-1">
+                            <input
+                              type={isPassVisible ? 'text' : 'password'}
+                              value={currentVal}
+                              onChange={(e) =>
+                                setEditingPasswords((prev) => ({ ...prev, [acc.id]: e.target.value }))
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-2 pr-7 py-1 text-xs font-mono font-bold text-slate-800 outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowUserPass((prev) => ({ ...prev, [acc.id]: !prev[acc.id] }))
+                              }
+                              className="absolute right-2 top-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                            >
+                              {isPassVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateAccountPassword(acc.id)}
+                            className="rounded-lg bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1 text-[10px] font-bold transition shadow-2xs shrink-0"
+                            title="Save password change for this user"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Active Bypass Code Indicator */}
+                      {acc.temporaryBypassCode &&
+                        (!acc.temporaryBypassCodeExpiresAt ||
+                          new Date(acc.temporaryBypassCodeExpiresAt).getTime() > Date.now()) && (
+                          <div className="mt-2 flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-950/40 p-1.5 text-[10px] text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800">
+                            <div className="flex items-center gap-1">
+                              <Unlock className="h-3 w-3 text-amber-600 animate-pulse" />
+                              <span>Bypass: <strong className="font-mono">{acc.temporaryBypassCode}</strong></span>
+                            </div>
+                            <span className="text-[9px] text-amber-700 dark:text-amber-300 font-semibold">Active</span>
+                          </div>
+                        )}
+
+                      {/* Reset Password & Bypass Trigger Button */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setResetUserTarget(acc)}
+                          className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800 hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300 transition"
+                        >
+                          <KeyRound className="h-3 w-3" />
+                          <span>Reset Password / Bypass Code</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Role Access Passwords & Rights Management */}
           <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4 dark:border-rose-500/30 dark:bg-rose-950/20 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-rose-700 dark:text-rose-300 flex items-center gap-2 text-xs">
                 <ShieldCheck className="h-4 w-4 text-rose-500" />
-                <span>Access Rights & Security Passwords</span>
+                <span>Global Role Passwords (Quick Switch)</span>
               </h4>
               <button
                 type="button"
@@ -389,7 +845,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
                 className="flex items-center gap-1 rounded-xl bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-500 shadow-sm transition"
               >
                 <Key className="h-3.5 w-3.5" />
-                <span>Save Passwords</span>
+                <span>Save Role Passwords</span>
               </button>
             </div>
 
@@ -499,6 +955,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Login Attempt History Audit Section */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+            <LoginHistorySection />
           </div>
 
           {/* Deleted Data Asset Entries Management */}
@@ -692,6 +1153,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
               <button
                 type="button"
                 onClick={() => {
+                  if (userRole !== 'Administrator') {
+                    alert('Permission Denied: Database factory reset requires Administrator privileges. Technicians have Write Data & View Data access.');
+                    return;
+                  }
                   if (confirm('Reset database to default seed data? Custom modifications will be lost.')) {
                     resetToDefaultSeed();
                     onClose();
@@ -723,6 +1188,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose, onNavigat
       <AddBrandModal isOpen={isAddBrandOpen} onClose={() => setIsAddBrandOpen(false)} />
       <AddVendorModal isOpen={isAddVendorOpen} onClose={() => setIsAddVendorOpen(false)} />
       <AddCategoryModal isOpen={isAddCategoryOpen} onClose={() => setIsAddCategoryOpen(false)} />
+      <CreateUserModal isOpen={showCreateUserModal} onClose={() => setShowCreateUserModal(false)} />
+      <ResetPasswordModal
+        isOpen={Boolean(resetUserTarget)}
+        onClose={() => setResetUserTarget(null)}
+        targetUser={
+          resetUserTarget
+            ? userAccounts.find((u) => u.id === resetUserTarget.id) || resetUserTarget
+            : null
+        }
+        onSuccessNotification={(msg) => setUserFeedbackMsg(msg)}
+      />
     </div>
   );
 };

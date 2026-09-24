@@ -41,6 +41,16 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({ initialAsset, onClos
 
   const printAreaRef = useRef<HTMLDivElement>(null);
 
+  const formatLocation = (loc: any): string => {
+    if (!loc) return 'AOCC Terminal';
+    if (typeof loc === 'string') return loc;
+    if (typeof loc === 'object') {
+      const parts = [loc.building, loc.floor, loc.room].filter(Boolean);
+      return parts.length > 0 ? parts.join(', ') : 'AOCC Terminal';
+    }
+    return String(loc);
+  };
+
   const asset = assets.find((a) => a.id === selectedAssetId) || initialAsset || assets[0];
 
   // Active barcode and QR payload string
@@ -50,12 +60,12 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({ initialAsset, onClos
     ? `PAA-SENTINEL-VAL:${customText}`
     : JSON.stringify({
         sys: 'PAA-SENTINEL-v5',
-        id: asset?.id,
-        tag: asset?.assetTag,
-        sn: asset?.serialNumber,
-        dept: asset?.department,
-        loc: asset?.location,
-        bc: asset?.barcode,
+        id: asset?.id || 'PAA-AST-10001',
+        tag: asset?.assetTag || 'TAG-001',
+        sn: asset?.serialNumber || 'SN-001',
+        dept: asset?.department || 'IT/CNS',
+        loc: formatLocation(asset?.location),
+        bc: asset?.barcode || '10001849201',
       });
 
   // Generate real vector Code 128 bars
@@ -284,7 +294,7 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({ initialAsset, onClos
                 </div>
                 <div className="flex justify-between text-[9px] font-bold text-slate-700 mt-0.5">
                   <span>SN: <strong className="font-mono text-slate-950">{asset?.serialNumber || 'SN-78492019'}</strong></span>
-                  <span>LOC: <strong className="text-slate-950">{asset?.location || 'AOCC Terminal'}</strong></span>
+                  <span>LOC: <strong className="text-slate-950">{formatLocation(asset?.location)}</strong></span>
                 </div>
               </div>
 
@@ -403,7 +413,7 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({ initialAsset, onClos
                 <div className="space-y-1 text-xs">
                   <div><strong className="text-slate-600">EQUIPMENT:</strong> {asset?.name || customText}</div>
                   <div><strong className="text-slate-600">SERIAL NO:</strong> <span className="font-mono">{asset?.serialNumber}</span></div>
-                  <div><strong className="text-slate-600">LOCATION:</strong> {asset?.location}</div>
+                  <div><strong className="text-slate-600">LOCATION:</strong> {typeof asset?.location === 'object' && asset?.location ? [asset.location.building, asset.location.floor, asset.location.room].filter(Boolean).join(', ') : (asset?.location || 'Main Airport Terminal')}</div>
                   <div><strong className="text-slate-600">RECEIVING REF:</strong> <span className="font-mono">LOG-2026-JIAP</span></div>
                 </div>
                 <div className="flex flex-col items-center justify-center">

@@ -28,7 +28,10 @@ async function startServer() {
   // Vite middleware for development vs Static SPA in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

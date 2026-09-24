@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Bell,
   BatteryCharging,
+  Compass,
   LogOut,
   LogIn,
   User,
@@ -25,6 +26,7 @@ import { getUPSBatteryAlerts } from '../utils/upsBatteryAlerts';
 
 export type ActiveTab =
   | 'dashboard'
+  | 'airport_map'
   | 'noc_alerts'
   | 'inventory'
   | 'printers'
@@ -73,6 +75,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       label: 'NOC Dashboard',
       icon: LayoutDashboard,
       badge: null,
+    },
+    {
+      id: 'airport_map' as ActiveTab,
+      label: 'Airport Map',
+      icon: Compass,
+      badge: '8 Zones',
+      badgeColor: 'bg-teal-600 text-white font-bold',
     },
     {
       id: 'noc_alerts' as ActiveTab,

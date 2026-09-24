@@ -14,15 +14,40 @@ import {
   FileText,
   AlertCircle,
   Loader2,
+  FileSpreadsheet,
+  History,
+  Eye,
+  ArrowDownToLine,
+  Search,
+  Calendar,
+  UserCheck,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react';
-import { UPSBackupListItem } from '../types/inventory';
+import { UPSBackupListItem, UPSBackupChecklistLogSheet } from '../types/inventory';
 import { defaultUPSBackupListRows } from '../data/upsFormsData';
+import { useInventory } from '../context/InventoryContext';
+import { UPSBackupChecklistDetailModal } from './UPSBackupChecklistDetailModal';
 
 interface UPSBackupListModalProps {
   onClose: () => void;
 }
 
 export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose }) => {
+  const {
+    upsBackupChecklistLogSheets,
+    addUPSBackupChecklistLogSheet,
+    deleteUPSBackupChecklistLogSheet,
+    currentUser,
+  } = useInventory();
+
+  const [activeTab, setActiveTab] = useState<'form' | 'logs'>('form');
+  const [selectedLogSheet, setSelectedLogSheet] = useState<UPSBackupChecklistLogSheet | null>(null);
+  const [showSaveLogModal, setShowSaveLogModal] = useState(false);
+  const [logSheetNotes, setLogSheetNotes] = useState('');
+  const [customSheetNumber, setCustomSheetNumber] = useState('');
+  const [logSearchQuery, setLogSearchQuery] = useState('');
+
   // Saved header and signature info
   const [reportDate, setReportDate] = useState<string>(() => {
     try {
@@ -137,6 +162,69 @@ export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose 
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleOpenSaveLogModal = () => {
+    const nextNum = upsBackupChecklistLogSheets.length + 42;
+    setCustomSheetNumber(`PAA/NOC/CHK-${String(nextNum).padStart(3, '0')}`);
+    setLogSheetNotes('');
+    setShowSaveLogModal(true);
+  };
+
+  const handleConfirmSaveLogSheet = () => {
+    const activeCount = rows.filter(
+      (r) => r.status.toLowerCase().includes('ok') || r.status.toLowerCase().includes('active')
+    ).length;
+    const issueCount = rows.filter(
+      (r) =>
+        r.status.toLowerCase().includes('fault') ||
+        r.status.toLowerCase().includes('replace') ||
+        r.status.toLowerCase().includes('down') ||
+        r.status.toLowerCase().includes('offline')
+    ).length;
+
+    const sheetNumber =
+      customSheetNumber.trim() ||
+      `PAA/NOC/CHK-${String(upsBackupChecklistLogSheets.length + 42).padStart(3, '0')}`;
+
+    const newSheet = addUPSBackupChecklistLogSheet({
+      sheetNumber,
+      title: 'UPS BACKUP LIST OF IT EQUIPMENT',
+      reportDate,
+      checkedByName,
+      supervisorName,
+      preparedByName,
+      preparedBySig,
+      verifiedByName,
+      verifiedBySig,
+      items: [...rows],
+      totalItems: rows.length,
+      activeCount,
+      issueCount,
+      notes: logSheetNotes.trim() || undefined,
+      loggedByUser: currentUser?.name || currentUser?.username || checkedByName || 'NOC Engineer',
+    });
+
+    handleSave(); // Syncs working draft state
+    setShowSaveLogModal(false);
+    setStatusMessage(`Saved to Log Sheet ${newSheet.sheetNumber} (${rows.length} items logged)!`);
+    setTimeout(() => setStatusMessage(null), 5000);
+  };
+
+  const handleLoadSheetIntoEditor = (sheet: UPSBackupChecklistLogSheet) => {
+    setRows(sheet.items);
+    setReportDate(sheet.reportDate);
+    setCheckedByName(sheet.checkedByName);
+    setSupervisorName(sheet.supervisorName);
+    if (sheet.preparedByName) setPreparedByName(sheet.preparedByName);
+    if (sheet.preparedBySig) setPreparedBySig(sheet.preparedBySig);
+    if (sheet.verifiedByName) setVerifiedByName(sheet.verifiedByName);
+    if (sheet.verifiedBySig) setVerifiedBySig(sheet.verifiedBySig);
+
+    setSelectedLogSheet(null);
+    setActiveTab('form');
+    setStatusMessage(`Loaded Log Sheet ${sheet.sheetNumber} into active inspection form editor.`);
+    setTimeout(() => setStatusMessage(null), 5000);
   };
 
   const handleExportCSV = () => {
@@ -568,10 +656,21 @@ export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose 
             <button
               type="button"
               onClick={handleSave}
-              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-xs"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 transition shadow-xs"
+              title="Save current inputs to local cache draft"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>Save Form</span>
+              <span>Save Draft</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenSaveLogModal}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 transition shadow-xs"
+              title="Save this entire checklist as a separate, permanent log sheet"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Save to Log Sheet</span>
             </button>
 
             <button
@@ -610,6 +709,47 @@ export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose 
           </div>
         </div>
 
+        {/* Tab Navigation Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/90 px-4 py-2 dark:border-slate-800 dark:bg-slate-900/80 print:hidden">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('form')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'form'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Inspection Checklist Form</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'logs'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Saved Log Sheets</span>
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 font-extrabold">
+                {upsBackupChecklistLogSheets.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            {activeTab === 'form' ? (
+              <span>Current Form: <strong>{rows.length}</strong> items in roster</span>
+            ) : (
+              <span>Total Archive: <strong>{upsBackupChecklistLogSheets.length}</strong> checklist log sheets</span>
+            )}
+          </div>
+        </div>
+
         {/* Status notification toast/banner */}
         {statusMessage && (
           <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 print:hidden animate-fadeIn">
@@ -627,8 +767,9 @@ export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose 
           </div>
         )}
 
-        {/* Scrollable Printable Paper Container */}
-        <div className="flex-1 overflow-auto p-3 sm:p-6 bg-slate-50 dark:bg-slate-950/60 print:bg-white print:p-0 print:overflow-visible">
+        {/* Scrollable Printable Paper Container or Saved Log Sheets */}
+        {activeTab === 'form' ? (
+          <div className="flex-1 overflow-auto p-3 sm:p-6 bg-slate-50 dark:bg-slate-950/60 print:bg-white print:p-0 print:overflow-visible">
           <div className="mx-auto w-full max-w-5xl rounded-xl bg-white p-4 sm:p-8 shadow-sm border border-slate-200 dark:bg-slate-900 dark:border-slate-800 print:border-0 print:shadow-none print:p-0 print:max-w-none text-slate-900 dark:text-slate-100">
             
             {/* Sheet Title & Date Header Matching Image 2 Exactly */}
@@ -861,6 +1002,301 @@ export const UPSBackupListModal: React.FC<UPSBackupListModalProps> = ({ onClose 
 
           </div>
         </div>
+        ) : (
+          /* Saved Log Sheets History View */
+          <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-50 dark:bg-slate-950/60 flex flex-col space-y-4">
+            {/* Top Filter & Quick Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search log sheets by sheet #, inspector, supervisor, or date..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleOpenSaveLogModal}
+                  className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Current Form as Sheet</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List of Log Sheets */}
+            {upsBackupChecklistLogSheets.filter((s) => {
+              if (!logSearchQuery.trim()) return true;
+              const q = logSearchQuery.toLowerCase();
+              return (
+                s.sheetNumber.toLowerCase().includes(q) ||
+                s.reportDate.toLowerCase().includes(q) ||
+                s.checkedByName.toLowerCase().includes(q) ||
+                s.supervisorName.toLowerCase().includes(q) ||
+                (s.notes && s.notes.toLowerCase().includes(q))
+              );
+            }).length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-center">
+                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-3">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Log Sheets Found</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
+                  {logSearchQuery
+                    ? 'No log sheets match your search filter.'
+                    : 'No saved log sheets yet. Click "Save to Log Sheet" on the form to preserve a permanent inspection audit.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenSaveLogModal}
+                  className="mt-4 px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-500 transition"
+                >
+                  Save Current Checklist as Log Sheet
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {upsBackupChecklistLogSheets
+                  .filter((s) => {
+                    if (!logSearchQuery.trim()) return true;
+                    const q = logSearchQuery.toLowerCase();
+                    return (
+                      s.sheetNumber.toLowerCase().includes(q) ||
+                      s.reportDate.toLowerCase().includes(q) ||
+                      s.checkedByName.toLowerCase().includes(q) ||
+                      s.supervisorName.toLowerCase().includes(q) ||
+                      (s.notes && s.notes.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((sheet) => {
+                    const activeCnt =
+                      sheet.activeCount ??
+                      sheet.items.filter(
+                        (i) => i.status.toLowerCase().includes('ok') || i.status.toLowerCase().includes('active')
+                      ).length;
+                    const issueCnt =
+                      sheet.issueCount ??
+                      sheet.items.filter(
+                        (i) =>
+                          i.status.toLowerCase().includes('fault') ||
+                          i.status.toLowerCase().includes('replace') ||
+                          i.status.toLowerCase().includes('down') ||
+                          i.status.toLowerCase().includes('offline')
+                      ).length;
+
+                    return (
+                      <div
+                        key={sheet.id}
+                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="px-2 py-0.5 text-xs font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 rounded border border-emerald-200 dark:border-emerald-800">
+                                  {sheet.sheetNumber}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {new Date(sheet.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white mt-1">
+                                {sheet.title}
+                              </h4>
+                            </div>
+
+                            <div className="flex items-center space-x-1.5 text-right">
+                              <span className="inline-flex items-center text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded">
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                {activeCnt} OK
+                              </span>
+                              {issueCnt > 0 && (
+                                <span className="inline-flex items-center text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
+                                  <AlertTriangle className="w-3 h-3 mr-1" />
+                                  {issueCnt} Issues
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Report Date</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">{sheet.reportDate}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-[10px]">Audited Items</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">{sheet.totalItems} equipment items</span>
+                            </div>
+                            <div className="truncate">
+                              <span className="text-slate-400 block text-[10px]">Inspector</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{sheet.checkedByName}</span>
+                            </div>
+                            <div className="truncate">
+                              <span className="text-slate-400 block text-[10px]">Supervisor</span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{sheet.supervisorName}</span>
+                            </div>
+                          </div>
+
+                          {sheet.notes && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-2">
+                              &ldquo;{sheet.notes}&rdquo;
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-400 truncate">
+                            Logged by: {sheet.loggedByUser || sheet.checkedByName}
+                          </span>
+
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLogSheet(sheet)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-xs font-semibold transition"
+                              title="View complete itemized log sheet"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View Detail</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleLoadSheetIntoEditor(sheet)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs font-semibold transition"
+                              title="Load items from this sheet into live form editor"
+                            >
+                              <ArrowDownToLine className="w-3 h-3" />
+                              <span>Load</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Delete saved log sheet ${sheet.sheetNumber}?`)) {
+                                  deleteUPSBackupChecklistLogSheet(sheet.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded transition"
+                              title="Delete this saved log sheet"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quick Modal: Save Current Form to Official Log Sheet */}
+        {showSaveLogModal && (
+          <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-w-md w-full p-5 space-y-4 animate-scaleUp">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Save Checklist Log Sheet</h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Archives current snapshot into audit history</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSaveLogModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                    Log Sheet Number / Reference Code
+                  </label>
+                  <input
+                    type="text"
+                    value={customSheetNumber}
+                    onChange={(e) => setCustomSheetNumber(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g. PAA/NOC/CHK-043"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block">Report Date:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{reportDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Total Items:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{rows.length} equipments</span>
+                  </div>
+                  <div className="truncate">
+                    <span className="text-slate-400 block">Inspector:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{checkedByName}</span>
+                  </div>
+                  <div className="truncate">
+                    <span className="text-slate-400 block">Supervisor:</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{supervisorName}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 font-medium mb-1">
+                    Shift Summary / Inspection Notes (Optional)
+                  </label>
+                  <textarea
+                    value={logSheetNotes}
+                    onChange={(e) => setLogSheetNotes(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g. Monthly routine audit completed. Terminal Comms Room UPS tested OK under synthetic load..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveLogModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSaveLogSheet}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-xs"
+                >
+                  Confirm & Save Log Sheet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Full Detail Viewer Modal for Selected Log Sheet */}
+        {selectedLogSheet && (
+          <UPSBackupChecklistDetailModal
+            sheet={selectedLogSheet}
+            onClose={() => setSelectedLogSheet(null)}
+            onLoadIntoEditor={handleLoadSheetIntoEditor}
+          />
+        )}
 
       </div>
     </div>

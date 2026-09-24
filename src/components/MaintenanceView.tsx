@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { MaintenanceRecord, AssetItem } from '../types/inventory';
-import { Wrench, Plus, DollarSign, Calendar, UserCheck, Search, X, ShieldCheck, BatteryCharging, Zap, Clock, CalendarDays } from 'lucide-react';
+import { Wrench, Plus, DollarSign, Calendar, UserCheck, Search, X, ShieldCheck, BatteryCharging, Zap, Clock, CalendarDays, Activity } from 'lucide-react';
 import { UPSMaintenanceModal } from './UPSMaintenanceModal';
 import { MaintenanceCalendarView } from './MaintenanceCalendarView';
+import { TechnicianSelectDropdown } from './TechnicianSelectDropdown';
+import { TechnicianActivityDashboard } from './TechnicianActivityDashboard';
 
 interface MaintenanceViewProps {
   onOpenGatePass?: (asset?: AssetItem) => void;
@@ -15,7 +17,7 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({ onOpenGatePass
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUPSModal, setShowUPSModal] = useState(false);
   const [selectedAssetForUPSModal, setSelectedAssetForUPSModal] = useState<AssetItem | null>(null);
-  const [activeCategoryTab, setActiveCategoryTab] = useState<'all' | 'calendar' | 'ups' | 'general'>('all');
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'all' | 'calendar' | 'ups' | 'general' | 'technicians'>('all');
 
   // Form State
   const [assetId, setAssetId] = useState(assets[0]?.id || '');
@@ -89,6 +91,18 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({ onOpenGatePass
           </button>
 
           <button
+            onClick={() => setActiveCategoryTab('technicians')}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-md ${
+              activeCategoryTab === 'technicians'
+                ? 'bg-indigo-600 text-white shadow-indigo-500/20'
+                : 'bg-slate-800 text-white hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600'
+            }`}
+          >
+            <Activity className="h-4 w-4 text-indigo-400" />
+            <span>Technician Activity & Settings</span>
+          </button>
+
+          <button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-emerald-500 transition"
           >
@@ -110,6 +124,18 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({ onOpenGatePass
           }`}
         >
           All Records ({maintenanceRecords.length + upsMaintenanceRecords.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveCategoryTab('technicians')}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition ${
+            activeCategoryTab === 'technicians'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-indigo-700 hover:text-indigo-800 dark:text-indigo-400'
+          }`}
+        >
+          <Activity className="h-3.5 w-3.5" />
+          <span>Technicians & Settings</span>
         </button>
         <button
           type="button"
@@ -146,6 +172,17 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({ onOpenGatePass
           General IT Maintenance ({maintenanceRecords.length})
         </button>
       </div>
+
+      {/* Technician Activity & Settings Dashboard */}
+      {activeCategoryTab === 'technicians' && (
+        <TechnicianActivityDashboard
+          onSelectAsset={(id) => {
+            const a = assets.find(x => x.id === id);
+            if (a && onSelectAsset) onSelectAsset(a);
+          }}
+          onOpenMaintenanceForm={() => setShowAddModal(true)}
+        />
+      )}
 
       {/* 3-Month Calendar View Section */}
       {activeCategoryTab === 'calendar' && (
@@ -331,12 +368,11 @@ export const MaintenanceView: React.FC<MaintenanceViewProps> = ({ onOpenGatePass
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Service Engineer</label>
-                <input
-                  type="text"
+                <TechnicianSelectDropdown
                   value={engineer}
-                  onChange={(e) => setEngineer(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  onChange={setEngineer}
+                  label="Assigned Technician"
+                  required
                 />
               </div>
 

@@ -15,24 +15,42 @@ import { RemovedItemsView, SoftRemoveModal } from './components/RemovedItemsView
 import { ReportsView } from './components/ReportsView';
 import { ADSyncView } from './components/ADSyncView';
 import { NotificationCenter } from './components/NotificationCenter';
+import { AirportMapOverlay } from './components/AirportMapOverlay';
 import { BarcodeModal } from './components/BarcodeModal';
+import { BarcodeLabelsView } from './components/BarcodeLabelsView';
 import { ExcelImportModal } from './components/ExcelImportModal';
 import { SettingsModal } from './components/SettingsModal';
+import { UserAccountsManagement } from './components/UserAccountsManagement';
+import { LoginHistorySection } from './components/LoginHistorySection';
+import { LDAPConfigurationForm } from './components/LDAPConfigurationForm';
 import { GatePassModal } from './components/GatePassModal';
 import { TonerIssueModal } from './components/TonerIssueModal';
+import { MobileDrawer } from './components/MobileDrawer';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { MobileConnectModal } from './components/MobileConnectModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { OfflineManagerModal } from './components/OfflineManagerModal';
+import { CrashRecoveryBanner } from './components/CrashRecoveryBanner';
 import { Settings, ShieldCheck, Plus } from 'lucide-react';
 import { AssetItem } from './types/inventory';
 
 const AppContent: React.FC = () => {
-  const { assets } = useInventory();
+  const { assets, isOnline, refreshDbData } = useInventory();
 
   // Navigation View Tab State
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+
+  // Mobile navigation and connect states
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [showMobileConnectModal, setShowMobileConnectModal] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [offlineModalTab, setOfflineModalTab] = useState<'sync' | 'backups'>('sync');
 
   // Modal States
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
   const [selectedAssetDetail, setSelectedAssetDetail] = useState<AssetItem | null>(null);
+  const [barcodeModalAsset, setBarcodeModalAsset] = useState<AssetItem | null>(null);
   const [softRemoveTarget, setSoftRemoveTarget] = useState<AssetItem | null>(null);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [showExcelImportModal, setShowExcelImportModal] = useState(false);
@@ -62,11 +80,21 @@ const AppContent: React.FC = () => {
         onOpenImportExcel={() => setShowExcelImportModal(true)}
         onSelectAsset={handleSelectAsset}
         onNavigateTab={(tab) => setActiveTab(tab)}
+        onToggleMobileDrawer={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
+        onOpenMobileConnect={() => setShowMobileConnectModal(true)}
+      />
+
+      {/* Emergency Crash Recovery Banner (Shown if unexpected crash/power loss occurred while working offline) */}
+      <CrashRecoveryBanner
+        onOpenBackupManager={() => {
+          setOfflineModalTab('backups');
+          setShowOfflineModal(true);
+        }}
       />
 
       {/* Main Body Layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Navigation Sidebar */}
+        {/* Navigation Sidebar (Desktop) */}
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -77,8 +105,26 @@ const AppContent: React.FC = () => {
           onOpenSettings={() => setShowSettingsModal(true)}
         />
 
-        {/* Main Content View Container */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        {/* Mobile Slide-Over Navigation Drawer */}
+        <MobileDrawer
+          isOpen={isMobileDrawerOpen}
+          onClose={() => setIsMobileDrawerOpen(false)}
+          activeTab={activeTab}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            setIsMobileDrawerOpen(false);
+          }}
+          onOpenAddModal={() => {
+            setEditingAsset(null);
+            setShowAddModal(true);
+          }}
+          onOpenSettings={() => setShowSettingsModal(true)}
+          onOpenMobileConnect={() => setShowMobileConnectModal(true)}
+          onOpenBarcodeModal={() => setShowBarcodeModal(true)}
+        />
+
+        {/* Main Content View Container with mobile bottom padding */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 pb-20 md:pb-8">
           <div className="mx-auto max-w-7xl">
             {activeTab === 'dashboard' && (
               <Dashboard
@@ -90,6 +136,15 @@ const AppContent: React.FC = () => {
                 onOpenImportModal={() => setShowExcelImportModal(true)}
                 onSelectAsset={handleSelectAsset}
               />
+            )}
+
+            {activeTab === 'airport_map' && (
+              <div className="space-y-4">
+                <AirportMapOverlay
+                  onSelectAsset={handleSelectAsset}
+                  isOverlayDefaultOpen={false}
+                />
+              </div>
             )}
 
             {activeTab === 'noc_alerts' && (
@@ -112,6 +167,11 @@ const AppContent: React.FC = () => {
                   setShowAddModal(true);
                 }}
                 onOpenImportModal={() => setShowExcelImportModal(true)}
+                onOpenLabelModal={(asset) => {
+                  setBarcodeModalAsset(asset || null);
+                  setShowBarcodeModal(true);
+                }}
+                onOpenIssueModal={handleOpenIssueForAsset}
               />
             )}
 
@@ -121,6 +181,10 @@ const AppContent: React.FC = () => {
                 onOpenIssueModal={handleOpenIssueForAsset}
                 onOpenAddModal={() => {
                   setEditingAsset(null);
+                  setShowAddModal(true);
+                }}
+                onOpenEditModal={(asset) => {
+                  setEditingAsset(asset);
                   setShowAddModal(true);
                 }}
               />
@@ -188,27 +252,46 @@ const AppContent: React.FC = () => {
 
             {activeTab === 'reports' && <ReportsView />}
 
+            {activeTab === 'labels' && <BarcodeLabelsView onSelectAsset={handleSelectAsset} />}
+
             {activeTab === 'adsync' && <ADSyncView />}
 
             {activeTab === 'settings' && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Settings className="h-5 w-5 text-emerald-500" />
-                      PAA System Settings & Role Security Management
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Configure Airport Identity, LDAPS Domain Integration, Role Access Security Passwords, Directories, and Database Backups.
-                    </p>
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Settings className="h-5 w-5 text-emerald-500" />
+                        PAA System Settings & Role Security Management
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Configure Airport Identity, LDAPS Domain Integration, Role Access Security Passwords, Directories, and Database Backups.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowSettingsModal(true)}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-emerald-500 transition shrink-0"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Open Configuration Modal</span>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setShowSettingsModal(true)}
-                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-emerald-500 transition"
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span>Open Settings Configuration</span>
-                  </button>
+                </div>
+
+                {/* Active Directory LDAP Configuration Form */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <LDAPConfigurationForm onNavigateTab={(tab) => setActiveTab(tab)} />
+                </div>
+
+                {/* User Accounts Management & Add User / Admin */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <UserAccountsManagement />
+                </div>
+
+                {/* Login Attempt History Audit Section in Settings Tab */}
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <LoginHistorySection />
                 </div>
               </div>
             )}
@@ -242,6 +325,7 @@ const AppContent: React.FC = () => {
             setSoftRemoveTarget(asset);
           }}
           onOpenLabelModal={(asset) => {
+            setBarcodeModalAsset(asset || selectedAssetDetail);
             setShowBarcodeModal(true);
           }}
           onOpenIssueModal={(asset) => {
@@ -282,7 +366,13 @@ const AppContent: React.FC = () => {
 
       {/* QR & Barcode Asset Tag Modal */}
       {showBarcodeModal && (
-        <BarcodeModal initialAsset={selectedAssetDetail} onClose={() => setShowBarcodeModal(false)} />
+        <BarcodeModal
+          initialAsset={barcodeModalAsset || selectedAssetDetail}
+          onClose={() => {
+            setShowBarcodeModal(false);
+            setBarcodeModalAsset(null);
+          }}
+        />
       )}
 
       {/* Excel Batch Import Modal */}
@@ -318,6 +408,33 @@ const AppContent: React.FC = () => {
           }}
         />
       )}
+
+      {/* Mobile Bottom Thumb Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
+        onToggleDrawer={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
+      />
+
+      {/* Mobile Connect & QR Modal */}
+      <MobileConnectModal
+        isOpen={showMobileConnectModal}
+        onClose={() => setShowMobileConnectModal(false)}
+      />
+
+      {/* Offline Status Floating Toast & Auto-Sync Notification */}
+      <OfflineIndicator
+        onOpenOfflineManager={() => setShowOfflineModal(true)}
+        onRefreshDb={refreshDbData}
+      />
+
+      {/* Offline Working & Data Sync Manager Modal */}
+      <OfflineManagerModal
+        isOpen={showOfflineModal}
+        onClose={() => setShowOfflineModal(false)}
+        isOnline={isOnline}
+        initialTab={offlineModalTab}
+      />
     </div>
   );
 };

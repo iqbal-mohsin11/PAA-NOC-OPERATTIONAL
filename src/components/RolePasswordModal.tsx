@@ -150,7 +150,7 @@ export const RolePasswordModal: React.FC<RolePasswordModalProps> = ({
               </button>
             </div>
             <p className="text-[10px] text-slate-400 mt-1">
-              Hint default passwords: <span className="font-mono font-bold text-slate-600 dark:text-slate-300">admin123</span> (Admin), <span className="font-mono font-bold text-slate-600 dark:text-slate-300">tech123</span> (Tech), <span className="font-mono font-bold text-slate-600 dark:text-slate-300">viewer123</span> (Viewer).
+              Hint default passwords: <span className="font-mono font-bold text-rose-600 dark:text-rose-400">123</span> (Mohsin / kalsoom Admin) or <span className="font-mono font-bold text-slate-600 dark:text-slate-300">admin123</span>, <span className="font-mono font-bold text-slate-600 dark:text-slate-300">tech123</span> (Tech), <span className="font-mono font-bold text-slate-600 dark:text-slate-300">viewer123</span> (Viewer).
             </p>
           </div>
 

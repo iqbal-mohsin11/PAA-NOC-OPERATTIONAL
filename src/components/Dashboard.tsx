@@ -56,9 +56,13 @@ import {
   Cable,
   Network,
   BatteryCharging,
+  Compass,
+  Map,
+  X,
 } from 'lucide-react';
 import { AssetItem, DeviceCategory } from '../types/inventory';
 import { NotificationCenter } from './NotificationCenter';
+import { AirportMapOverlay } from './AirportMapOverlay';
 import { ProcurementFormModal } from './ProcurementFormModal';
 import { InternalRequisitionFormModal } from './InternalRequisitionFormModal';
 import { LogisticsReceivingModal } from './LogisticsReceivingModal';
@@ -97,6 +101,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [showFormsMenu, setShowFormsMenu] = useState<boolean>(false);
   const [showBatteryReplacementModal, setShowBatteryReplacementModal] = useState<boolean>(false);
   const [showBackupListModal, setShowBackupListModal] = useState<boolean>(false);
+  const [showAirportMapModal, setShowAirportMapModal] = useState<boolean>(false);
 
   const handleNav = (tab: string) => {
     if (onNavigateTab) onNavigateTab(tab);
@@ -273,6 +278,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Quick Action Buttons Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Airport Map Visualization Overlay Button */}
+          <button
+            onClick={() => {
+              const el = document.getElementById('airport-map-visualization');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setShowAirportMapModal(true);
+              }
+            }}
+            className="flex items-center gap-2 rounded-xl border border-teal-500/50 bg-teal-500/20 px-3.5 py-2 text-xs font-extrabold text-teal-300 transition hover:bg-teal-500/30 shadow-md shrink-0"
+            title="Airport Map Visualization Overlay: View asset distribution by terminal & zone"
+          >
+            <Compass className="h-4 w-4 text-teal-400 animate-spin-slow" />
+            <span>Airport Map</span>
+            <span className="rounded-full bg-teal-600 px-1.5 py-0.2 text-[10px] font-extrabold text-white">
+              8 Zones
+            </span>
+          </button>
+
           {/* NOC Operations Alerts */}
           <button
             onClick={() => handleNav('noc_alerts')}
@@ -846,6 +871,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onNavigateTab={(tab) => handleNav(tab)}
       />
 
+      {/* AIRPORT MAP VISUALIZATION OVERLAY: ASSET DISTRIBUTION BY TERMINAL / ZONE */}
+      <div id="airport-map-visualization" className="scroll-mt-6">
+        <AirportMapOverlay
+          onSelectAsset={onSelectAsset}
+          isOverlayDefaultOpen={false}
+        />
+      </div>
+
       {/* Main Bento Layout: Left 2 Cols (Airport Facilities + Category Matrix + Charts), Right Col (Live NOC Metrics & Critical Assets) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left Column (2 Cols wide on desktop) */}
@@ -1379,6 +1412,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <UPSBackupListModal
           onClose={() => setShowBackupListModal(false)}
         />
+      )}
+
+      {/* Airport Map Fullscreen Overlay Modal */}
+      {showAirportMapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-2 sm:p-4 md:p-6 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-7xl max-h-[96vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div className="absolute top-4 right-4 z-20">
+              <button
+                type="button"
+                onClick={() => setShowAirportMapModal(false)}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-800/90 border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-700 hover:text-white transition shadow-lg"
+                title="Close Map Overlay"
+              >
+                <X className="h-4 w-4" />
+                <span>Close Overlay</span>
+              </button>
+            </div>
+            <AirportMapOverlay
+              onSelectAsset={(asset) => {
+                setShowAirportMapModal(false);
+                onSelectAsset(asset);
+              }}
+              isOverlayDefaultOpen={false}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

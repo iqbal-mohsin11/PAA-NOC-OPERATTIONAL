@@ -1,4 +1,9 @@
-import { UPSBatteryReplacementEntry, UPSBackupListItem } from '../types/inventory';
+import {
+  UPSBatteryReplacementEntry,
+  UPSBackupListItem,
+  UPSBackupChecklistLogSheet,
+  UPSBatteryReplacementLogSheet,
+} from '../types/inventory';
 
 export const defaultUPSBatteryReplacementEntries: UPSBatteryReplacementEntry[] = [
   {
@@ -206,4 +211,127 @@ export const defaultUPSBackupListRows: UPSBackupListItem[] = [
   { sNo: 20, itemDescription: 'UPS-2232', location: 'IT Store Standby', date: '2026-03-06', status: 'Active (Spare)', checkedBy: 'Engr. Mohsin', remarks: 'Hot standby ready' },
   { sNo: 21, itemDescription: 'UPS-', location: 'Security Gate 1', date: '2026-03-06', status: 'In Service', checkedBy: 'Tariq Mehmood', remarks: 'Pass office terminal' },
   { sNo: 22, itemDescription: 'UPS-', location: 'Tower Met Office', date: '2026-03-06', status: 'Active', checkedBy: 'Engr. Mohsin', remarks: 'Weather sensor PC' },
+];
+
+export const defaultUPSBackupChecklistLogSheets: UPSBackupChecklistLogSheet[] = [
+  {
+    id: 'LOG-CHK-2026-003',
+    sheetNumber: 'PAA/NOC/CHK-042',
+    title: 'UPS Backup List of IT Equipment - March Shift Inspection',
+    createdAt: '2026-03-06T14:30:00.000Z',
+    reportDate: '06 / 03 / 2026',
+    checkedByName: 'Engr. Mohsin (IT NOC)',
+    supervisorName: 'Farid',
+    preparedByName: 'Engr. Mohsin',
+    preparedBySignature: 'Mohsin / PAA',
+    verifiedByOfficerName: 'Officer In-Charge (IT)',
+    verifiedByOfficerSignature: 'O/IC IT / PAA',
+    totalItems: 22,
+    activeCount: 22,
+    issueCount: 0,
+    logNotes: 'Comprehensive first week of March electrical load inspection passed across all terminals.',
+    loggedByUsername: 'mohsin',
+    items: defaultUPSBackupListRows,
+  },
+  {
+    id: 'LOG-CHK-2026-002',
+    sheetNumber: 'PAA/NOC/CHK-041',
+    title: 'UPS Backup List of IT Equipment - Mid-February Periodic Audit',
+    createdAt: '2026-02-15T11:15:00.000Z',
+    reportDate: '15 / 02 / 2026',
+    checkedByName: 'Tariq Mehmood (Tech)',
+    supervisorName: 'Farid',
+    preparedByName: 'Tariq Mehmood',
+    preparedBySignature: 'Tariq / PAA',
+    verifiedByOfficerName: 'Officer In-Charge (IT)',
+    verifiedByOfficerSignature: 'O/IC IT / PAA',
+    totalItems: 22,
+    activeCount: 20,
+    issueCount: 2,
+    logNotes: 'Level 6 Radar Server Room & Cargo FBR under observed load degradation. Scheduled for battery service.',
+    loggedByUsername: 'tariq',
+    items: defaultUPSBackupListRows.map((r, i) =>
+      i === 0
+        ? { ...r, status: 'Warning (Low Runtime)', remarks: 'Runtime dropped to 12 mins under load test' }
+        : i === 18
+        ? { ...r, status: 'Inspection Due', remarks: 'Terminal dust cleaning required' }
+        : r
+    ),
+  },
+  {
+    id: 'LOG-CHK-2026-001',
+    sheetNumber: 'PAA/NOC/CHK-040',
+    title: 'UPS Backup List of IT Equipment - January Routine Roster',
+    createdAt: '2026-01-20T09:45:00.000Z',
+    reportDate: '20 / 01 / 2026',
+    checkedByName: 'Muhammad Ali (NOC)',
+    supervisorName: 'Farid',
+    preparedByName: 'Muhammad Ali',
+    preparedBySignature: 'M. Ali / PAA',
+    verifiedByOfficerName: 'Officer In-Charge (IT)',
+    verifiedByOfficerSignature: 'O/IC IT / PAA',
+    totalItems: 22,
+    activeCount: 22,
+    issueCount: 0,
+    logNotes: 'Annual opening check. All airside and passenger terminal units verified operational.',
+    loggedByUsername: 'mali',
+    items: defaultUPSBackupListRows,
+  },
+];
+
+export const defaultUPSBatteryReplacementLogSheets: UPSBatteryReplacementLogSheet[] = [
+  {
+    id: 'LOG-BAT-2024-001',
+    sheetNumber: 'PAA/NOC/BAT-028',
+    title: 'Details Replacement of UPS Batteries Installed at Different Locations - Annual Overhaul',
+    createdAt: '2024-11-20T16:00:00.000Z',
+    batchDate: '2024-11-20',
+    chiefTechnician: 'Engr. Mohsin (IT NOC)',
+    supervisorOrVerifiedBy: 'Officer In-Charge (IT)',
+    totalUnitsReplaced: 20,
+    totalBatteriesCount: 66,
+    logNotes: 'Mass fleet battery bank renewal. 16x 1kVA units (3 cells each) + 2x 3kVA units (8 cells each). Old batteries recycled under environmental SOP.',
+    loggedByUsername: 'mohsin',
+    entries: defaultUPSBatteryReplacementEntries,
+  },
+  {
+    id: 'LOG-BAT-2025-001',
+    sheetNumber: 'PAA/NOC/BAT-029',
+    title: 'Mid-Year Radar & Airside Battery Replacement Campaign',
+    createdAt: '2025-06-14T12:30:00.000Z',
+    batchDate: '2025-06-14',
+    chiefTechnician: 'Tariq Mehmood (Tech)',
+    supervisorOrVerifiedBy: 'Farid',
+    totalUnitsReplaced: 4,
+    totalBatteriesCount: 17,
+    logNotes: 'Targeted replacement for high ambient temperature rooms (Level 6 Radar, Airside 1057, Crash Fire, Radar Fiber).',
+    loggedByUsername: 'tariq',
+    entries: defaultUPSBatteryReplacementEntries.slice(0, 4).map((e, idx) => ({
+      ...e,
+      date: '2025-06-14',
+      replacedBy: 'Tariq Mehmood (Tech)',
+      signature: 'Tariq / PAA',
+      remarks: idx === 0 ? 'Replaced 3x 12V 7.2Ah cells. Float voltage 40.5V DC.' : e.remarks,
+    })),
+  },
+  {
+    id: 'LOG-BAT-2026-001',
+    sheetNumber: 'PAA/NOC/BAT-030',
+    title: 'Q1 Critical Passenger Terminal & Baggage UPS Battery Replacement',
+    createdAt: '2026-02-18T15:10:00.000Z',
+    batchDate: '2026-02-18',
+    chiefTechnician: 'Engr. Mohsin (IT NOC)',
+    supervisorOrVerifiedBy: 'Officer In-Charge (IT)',
+    totalUnitsReplaced: 3,
+    totalBatteriesCount: 9,
+    logNotes: 'Replaced aging batteries in Check-in 1157, Baggage 1244, and Floor 3 Switch 3084 prior to Hajj flight operations.',
+    loggedByUsername: 'mohsin',
+    entries: defaultUPSBatteryReplacementEntries.slice(5, 8).map((e) => ({
+      ...e,
+      date: '2026-02-18',
+      replacedBy: 'Engr. Mohsin (IT NOC)',
+      signature: 'Mohsin / PAA-IT',
+      remarks: '3x fresh Phoenix VRLA 12V 7.2Ah batteries installed. 100% capacity verified.',
+    })),
+  },
 ];

@@ -26,8 +26,28 @@ import {
   initialLogisticsReceivingRecords,
 } from '../data/mockData';
 import { activeDirectoryCatalog, autoFetchActiveDirectory } from '../data/adDirectoryData';
+import {
+  testADLdapConnection,
+  fetchAllFromAD,
+  calculateADDiscrepancies,
+  getADConfig,
+  updateADConfig,
+  ADLdapConfig,
+} from './ldap';
 
 export const apiRouter = Router();
+
+// In-memory fallback stores when MongoDB is not running locally
+let memoryAssets: any[] = [...initialAssets];
+let memoryTickets: any[] = [...initialTickets];
+let memoryMaintenanceRecords: any[] = [...initialMaintenanceRecords];
+let memoryUPSMaintenanceRecords: any[] = [...initialUPSMaintenanceRecords];
+let memoryLogisticsRecords: any[] = [...initialLogisticsReceivingRecords];
+let memoryTonerRecords: any[] = [...initialTonerIssueRecords];
+let memoryGatePassRecords: any[] = [...initialGatePassRecords];
+let memoryAuditLogs: any[] = [...initialAuditLogs];
+let memoryFacilities: any[] = [...initialFacilities];
+let memorySettings: any = { ...initialSettings };
 
 // Auto-seed function when MongoDB connects and has 0 assets
 export async function autoSeedIfEmpty() {
@@ -137,9 +157,22 @@ apiRouter.get('/sync/all', async (_req: Request, res: Response) => {
   try {
     const dbStatus = getDatabaseStatus();
     if (!dbStatus.isConnected) {
-      return res.status(503).json({
-        error: 'MongoDB is not connected',
-        fallback: true,
+      // Graceful fallback to memory store
+      return res.json({
+        success: true,
+        isFallback: true,
+        data: {
+          assets: memoryAssets,
+          tickets: memoryTickets,
+          maintenanceRecords: memoryMaintenanceRecords,
+          upsMaintenanceRecords: memoryUPSMaintenanceRecords,
+          logisticsReceivingRecords: memoryLogisticsRecords,
+          tonerIssueRecords: memoryTonerRecords,
+          gatePassRecords: memoryGatePassRecords,
+          auditLogs: memoryAuditLogs,
+          facilities: memoryFacilities,
+          settings: memorySettings,
+        },
       });
     }
 
@@ -160,20 +193,36 @@ apiRouter.get('/sync/all', async (_req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        assets: assets.length ? assets : initialAssets,
-        tickets: tickets.length ? tickets : initialTickets,
-        maintenanceRecords: maintenanceRecords.length ? maintenanceRecords : initialMaintenanceRecords,
-        upsMaintenanceRecords: upsMaintenanceRecords.length ? upsMaintenanceRecords : initialUPSMaintenanceRecords,
-        logisticsReceivingRecords: logisticsReceivingRecords.length ? logisticsReceivingRecords : initialLogisticsReceivingRecords,
-        tonerIssueRecords: tonerIssueRecords.length ? tonerIssueRecords : initialTonerIssueRecords,
-        gatePassRecords: gatePassRecords.length ? gatePassRecords : initialGatePassRecords,
-        auditLogs: auditLogs.length ? auditLogs : initialAuditLogs,
-        facilities: facilities.length ? facilities : initialFacilities,
-        settings: settingsDoc || initialSettings,
+        assets: assets.length ? assets : memoryAssets,
+        tickets: tickets.length ? tickets : memoryTickets,
+        maintenanceRecords: maintenanceRecords.length ? maintenanceRecords : memoryMaintenanceRecords,
+        upsMaintenanceRecords: upsMaintenanceRecords.length ? upsMaintenanceRecords : memoryUPSMaintenanceRecords,
+        logisticsReceivingRecords: logisticsReceivingRecords.length ? logisticsReceivingRecords : memoryLogisticsRecords,
+        tonerIssueRecords: tonerIssueRecords.length ? tonerIssueRecords : memoryTonerRecords,
+        gatePassRecords: gatePassRecords.length ? gatePassRecords : memoryGatePassRecords,
+        auditLogs: auditLogs.length ? auditLogs : memoryAuditLogs,
+        facilities: facilities.length ? facilities : memoryFacilities,
+        settings: settingsDoc || memorySettings,
       },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    // Return memory fallback rather than failing
+    res.json({
+      success: true,
+      isFallback: true,
+      data: {
+        assets: memoryAssets,
+        tickets: memoryTickets,
+        maintenanceRecords: memoryMaintenanceRecords,
+        upsMaintenanceRecords: memoryUPSMaintenanceRecords,
+        logisticsReceivingRecords: memoryLogisticsRecords,
+        tonerIssueRecords: memoryTonerRecords,
+        gatePassRecords: memoryGatePassRecords,
+        auditLogs: memoryAuditLogs,
+        facilities: memoryFacilities,
+        settings: memorySettings,
+      },
+    });
   }
 });
 
@@ -181,8 +230,28 @@ apiRouter.get('/sync/all', async (_req: Request, res: Response) => {
 apiRouter.get('/assets', async (req: Request, res: Response) => {
   try {
     const { department, category, status, search } = req.query;
-    const filter: any = {};
+    const dbStatus = getDatabaseStatus();
 
+    if (!dbStatus.isConnected) {
+      let results = [...memoryAssets];
+      if (department && department !== 'ALL') results = results.filter((a) => a.department === department);
+      if (category && category !== 'ALL') results = results.filter((a) => a.category === category);
+      if (status && status !== 'ALL') results = results.filter((a) => a.status === status);
+      if (search) {
+        const s = String(search).toLowerCase();
+        results = results.filter(
+          (a) =>
+            (a.id && a.id.toLowerCase().includes(s)) ||
+            (a.name && a.name.toLowerCase().includes(s)) ||
+            (a.serialNumber && a.serialNumber.toLowerCase().includes(s)) ||
+            (a.assignedUser && a.assignedUser.toLowerCase().includes(s)) ||
+            (a.systemSpecs?.ipAddress && a.systemSpecs.ipAddress.includes(s))
+        );
+      }
+      return res.json(results);
+    }
+
+    const filter: any = {};
     if (department && department !== 'ALL') filter.department = department;
     if (category && category !== 'ALL') filter.category = category;
     if (status && status !== 'ALL') filter.status = status;
@@ -199,7 +268,7 @@ apiRouter.get('/assets', async (req: Request, res: Response) => {
     const assets = await AssetModel.find(filter).lean();
     res.json(assets);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.json(memoryAssets);
   }
 });
 
@@ -513,23 +582,150 @@ apiRouter.get('/backup/export', async (_req: Request, res: Response) => {
   }
 });
 
-// 12. Active Directory (AD) Auto Fetch & LDAP Directory Services
-apiRouter.get('/ad/computers', async (_req: Request, res: Response) => {
+// 12. Active Directory (AD) LDAP Directory Services & Auto-Fetch Engine
+
+// GET AD LDAP Configuration
+apiRouter.get('/ad/config', async (_req: Request, res: Response) => {
   try {
+    const config = getADConfig();
     res.json({
       success: true,
-      domain: 'paa.gov.pk',
-      domainController: '10.100.0.5 (DC01.paa.gov.pk)',
-      ldapPort: 636,
-      count: activeDirectoryCatalog.length,
-      computers: activeDirectoryCatalog,
-      queriedAt: new Date().toISOString(),
+      config: {
+        ...config,
+        bindPasswordMasked: config.bindPassword ? '••••••••' : '(Not set)',
+      },
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// UPDATE AD LDAP Configuration
+apiRouter.post('/ad/config', async (req: Request, res: Response) => {
+  try {
+    const updated = updateADConfig(req.body);
+    res.json({
+      success: true,
+      message: 'Active Directory LDAP configuration updated successfully',
+      config: {
+        ...updated,
+        bindPasswordMasked: updated.bindPassword ? '••••••••' : '(Not set)',
+      },
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// TEST LIVE LDAP CONNECTION TO AD SERVER
+apiRouter.post('/ad/test-connection', async (req: Request, res: Response) => {
+  try {
+    const current = getADConfig();
+    const configToTest: ADLdapConfig = {
+      ...current,
+      ...(req.body || {}),
+    };
+
+    if (req.body?.host) configToTest.host = req.body.host;
+    if (req.body?.port) configToTest.port = Number(req.body.port);
+    if (typeof req.body?.useTls === 'boolean') configToTest.useTls = req.body.useTls;
+    if (req.body?.baseDn) configToTest.baseDn = req.body.baseDn;
+    if (req.body?.bindDn) configToTest.bindDn = req.body.bindDn;
+    if (req.body?.bindPassword !== undefined) configToTest.bindPassword = req.body.bindPassword;
+
+    const result = await testADLdapConnection(configToTest);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      connectedToLiveServer: false,
+      error: err.message,
+      message: `Failed to execute LDAP connection test: ${err.message}`,
+      fallbackAvailable: true,
+    });
+  }
+});
+
+// FETCH ALL DATA FROM AD SERVER VIA LDAP & COMPUTE DISCREPANCIES
+apiRouter.post('/ad/fetch-all', async (req: Request, res: Response) => {
+  try {
+    const current = getADConfig();
+    const configToUse: ADLdapConfig = {
+      ...current,
+      ...(req.body || {}),
+    };
+
+    // 1. Fetch all computer objects from AD Server (Live LDAP or fallback enterprise catalog)
+    const adResult = await fetchAllFromAD(configToUse);
+
+    // 2. Fetch all current Sentinel inventory assets
+    let currentAssets: any[] = [];
+    const dbStatus = getDatabaseStatus();
+    if (dbStatus.isConnected) {
+      try {
+        currentAssets = await AssetModel.find().lean();
+      } catch {
+        currentAssets = memoryAssets;
+      }
+    } else {
+      currentAssets = memoryAssets;
+    }
+
+    // 3. Calculate discrepancies dynamically
+    const discrepancies = calculateADDiscrepancies(adResult.computers, currentAssets);
+
+    const countNewInAd = discrepancies.filter((d) => d.status === 'New_In_AD').length;
+    const countSpecsMismatch = discrepancies.filter((d) => d.status === 'Specs_Mismatch').length;
+    const countStaleDisabled = discrepancies.filter((d) => d.status === 'Stale_Disabled').length;
+    const countInSync = discrepancies.filter((d) => d.status === 'In_Sync').length;
+
+    res.json({
+      success: true,
+      source: adResult.source,
+      server: adResult.host,
+      port: adResult.port,
+      url: adResult.url,
+      queriedAt: adResult.queriedAt,
+      latencyMs: adResult.latencyMs,
+      totalDiscovered: adResult.totalFound,
+      computers: adResult.computers,
+      discrepancies,
+      summary: {
+        total: discrepancies.length,
+        newInAd: countNewInAd,
+        specsMismatch: countSpecsMismatch,
+        staleDisabled: countStaleDisabled,
+        inSync: countInSync,
+      },
+      note: adResult.note,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET COMPUTERS FROM AD
+apiRouter.get('/ad/computers', async (_req: Request, res: Response) => {
+  try {
+    const config = getADConfig();
+    const adResult = await fetchAllFromAD(config);
+    res.json({
+      success: true,
+      source: adResult.source,
+      domain: 'paa.gov.pk',
+      domainController: `${config.host}:${config.port}`,
+      ldapPort: config.port,
+      count: adResult.computers.length,
+      computers: adResult.computers,
+      queriedAt: adResult.queriedAt,
+      latencyMs: adResult.latencyMs,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SINGLE HOST AD LOOKUP VIA LDAP
 apiRouter.get('/ad/lookup', async (req: Request, res: Response) => {
   try {
     const query = (req.query.query as string) || (req.query.computerName as string) || '';
@@ -537,12 +733,14 @@ apiRouter.get('/ad/lookup', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Query parameter (computerName or IP) is required' });
     }
     const result = autoFetchActiveDirectory(query);
+    const config = getADConfig();
     res.json({
       success: true,
       query,
       domain: 'paa.gov.pk',
+      domainController: `${config.host}:${config.port}`,
       computer: result,
-      source: 'LDAPS://DC01.paa.gov.pk:636',
+      source: `LDAPS://${config.host}:${config.port}`,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err: any) {
@@ -550,26 +748,128 @@ apiRouter.get('/ad/lookup', async (req: Request, res: Response) => {
   }
 });
 
+// AD DOMAIN CONTROLLER & LDAP STATUS
 apiRouter.get('/ad/status', async (_req: Request, res: Response) => {
   try {
+    const config = getADConfig();
     res.json({
       status: 'ONLINE',
       domain: 'paa.gov.pk',
       forest: 'paa.gov.pk',
       functionalLevel: 'Windows Server 2022',
-      primaryDc: 'DC01.paa.gov.pk (10.100.0.5)',
-      secondaryDc: 'DC02.paa.gov.pk (10.100.0.6)',
-      ldapPort: 636,
+      primaryDc: `${config.host} (DC01.paa.gov.pk)`,
+      secondaryDc: '10.100.0.6 (DC02.paa.gov.pk)',
+      ldapPort: config.port,
+      protocol: config.useTls || config.port === 636 ? 'LDAPS (SSL/TLS)' : 'LDAP (TCP)',
       sslCertificate: 'CN=paa-DC01-CA, Valid through 2028',
-      latencyMs: 2,
-      targetOUs: [
-        'OU=Workstations,DC=paa,DC=gov,DC=pk',
-        'OU=Servers,DC=paa,DC=gov,DC=pk',
-        'OU=Laptops,DC=paa,DC=gov,DC=pk',
-        'OU=Domain Users,DC=paa,DC=gov,DC=pk',
-      ],
+      baseDn: config.baseDn,
+      targetOUs: config.targetOus,
       totalDiscoveredObjects: activeDirectoryCatalog.length,
       lastSyncTime: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// RECONCILE ALL DISCREPANCIES (Import new AD items & sync mismatches into inventory)
+apiRouter.post('/ad/reconcile-all', async (req: Request, res: Response) => {
+  try {
+    const items = req.body.items || [];
+    let createdCount = 0;
+    let updatedCount = 0;
+    const dbStatus = getDatabaseStatus();
+
+    for (const item of items) {
+      if (item.status === 'New_In_AD') {
+        const newAssetData = {
+          id: `PAA-AST-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 89 + 10)}`,
+          barcode: `BC-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 89 + 10)}`,
+          name: `${item.brand || 'Enterprise'} ${item.model || 'PC'} (${item.computerName})`,
+          category: item.category || 'Desktop PC',
+          department: item.department || 'Operations',
+          assignedUser: item.userAD,
+          serialNumber: `SN-AD-${item.computerName}`,
+          brand: item.brand || 'Dell',
+          model: item.model || 'OptiPlex',
+          status: 'Active',
+          location: {
+            building: 'PAA Main Terminal',
+            floor: '1st Floor',
+            room: 'Operations Wing',
+          },
+          systemSpecs: {
+            computerName: item.computerName,
+            ipAddress: item.ipAddressAD,
+            osVersion: item.osAD,
+            processor: item.processor || 'Intel Core i5',
+            ram: item.ram || '16GB',
+            ssd: item.storage || '512GB NVMe',
+          },
+        };
+
+        if (dbStatus.isConnected) {
+          try {
+            await AssetModel.create(newAssetData);
+          } catch {}
+        }
+        memoryAssets.push(newAssetData);
+        createdCount++;
+      } else if (item.status === 'Specs_Mismatch' && item.matchedAssetId) {
+        const updateData = {
+          'systemSpecs.ipAddress': item.ipAddressAD,
+          'systemSpecs.osVersion': item.osAD,
+          'systemSpecs.computerName': item.computerName,
+          assignedUser: item.userAD.split('(')[0].trim(),
+        };
+
+        if (dbStatus.isConnected) {
+          try {
+            await AssetModel.findOneAndUpdate({ id: item.matchedAssetId }, { $set: updateData });
+          } catch {}
+        }
+
+        const idx = memoryAssets.findIndex((a) => a.id === item.matchedAssetId);
+        if (idx !== -1) {
+          memoryAssets[idx] = {
+            ...memoryAssets[idx],
+            assignedUser: item.userAD.split('(')[0].trim(),
+            systemSpecs: {
+              ...(memoryAssets[idx].systemSpecs || {}),
+              ipAddress: item.ipAddressAD,
+              osVersion: item.osAD,
+              computerName: item.computerName,
+            },
+          };
+        }
+        updatedCount++;
+      }
+    }
+
+    // Log to audit log
+    const auditEntry = {
+      id: `LOG-AD-${Date.now()}`,
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19) + ' PKT',
+      actor: req.body.actor || 'Administrator (AD LDAP Sync)',
+      action: 'Active Directory Reconciliation',
+      details: `AD LDAP sync completed: Imported ${createdCount} new computers and updated ${updatedCount} existing assets from Active Directory`,
+      type: 'success',
+    };
+
+    if (dbStatus.isConnected) {
+      try {
+        await AuditLogModel.create(auditEntry);
+      } catch {}
+    }
+    memoryAuditLogs.unshift(auditEntry);
+
+    res.json({
+      success: true,
+      createdCount,
+      updatedCount,
+      totalReconciled: createdCount + updatedCount,
+      auditEntry,
+      message: `Reconciled Active Directory data: ${createdCount} imported as new assets, ${updatedCount} updated.`,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -91,10 +91,14 @@ export interface PrinterSpecs {
   duplex?: boolean;
   tonerModel?: string;
   tonerLevel?: number; // percentage 0-100
+  batteryLifeDays?: number; // Remaining battery life in days (for portable/mobile printers)
+  batteryHealthPercent?: number; // 0-100%
 }
 
 export interface ScannerSpecs {
   scannerType?: 'Flatbed' | 'ADF' | 'Network' | 'Portable';
+  batteryLifeDays?: number; // Remaining battery life in days (for portable/field scanners)
+  batteryHealthPercent?: number; // 0-100%
 }
 
 export interface NetworkDeviceSpecs {
@@ -184,6 +188,7 @@ export interface AssetItem {
   pingStatus?: 'Online' | 'Offline' | 'Warning';
   uptime?: string;
   lastMaintenanceDate?: string;
+  batteryLifeDays?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -279,6 +284,118 @@ export interface TonerIssueRecord {
   remarks?: string;
 }
 
+export type PrinterMaintenanceType =
+  | 'Parts Replacement'
+  | 'Part Replacement / Overhaul'
+  | 'Preventive Maintenance'
+  | 'General Maintenance & Cleaning'
+  | 'Emergency Repair'
+  | 'Paper Jam & Roller Service'
+  | 'Paper Jam & Feed Servicing'
+  | 'Printhead / Roller Cleaning'
+  | 'Fuser Assembly Repair'
+  | 'Fuser Overhaul'
+  | 'Formatter / Logic Board Repair'
+  | 'Laser Scanner Optics Service'
+  | 'Firmware / Network Config'
+  | 'Firmware & Network Setup'
+  | 'Toner Cartridge & Drum Service'
+  | 'Full Overhaul / Reconditioning'
+  | 'General Overhaul'
+  | (string & {});
+
+export type PrinterMaintenanceStatus =
+  | 'Completed'
+  | 'In Progress'
+  | 'Awaiting Parts'
+  | 'Sent to Workshop'
+  | 'Scrap / Unrepairable';
+
+export interface PrinterPartUsed {
+  partId?: string;
+  partName: string;
+  partNumber?: string;
+  quantity: number;
+  unitCostPkr?: number;
+  oldPartStatus?: 'Discarded' | 'Returned to Store' | 'Repaired';
+}
+
+export interface PrinterMaintenanceRecord {
+  id: string; // e.g. PMR-2026-001
+  date: string; // YYYY-MM-DD
+  assetId: string;
+  printerName: string;
+  brand: string;
+  model: string;
+  department: Department;
+  location?: string;
+  assignedUser?: string;
+  serviceType: PrinterMaintenanceType;
+  issueReported: string; // symptoms e.g. "Paper jam in tray 2, grinding noise, faded print"
+  actionTaken: string; // diagnostics, repair steps taken
+  partsChanged: PrinterPartUsed[];
+  partsChangedSummary?: string;
+  technicianName: string; // e.g. "Engr. Mohsin (IT NOC)"
+  workshopVendor?: string;
+  status: PrinterMaintenanceStatus;
+  pageCount?: number; // total page counter / odometer reading
+  testPagePrinted: boolean; // quality verified
+  costPkr?: number;
+  supervisedBy?: string;
+  remarks?: string;
+  createdAt: string;
+}
+
+export interface PrinterModelDefinition {
+  id: string; // e.g. PM-HP-1102
+  company: string; // e.g. HP, Canon, Epson, Brother, Ricoh, Lexmark, Kyocera, Xerox
+  modelName: string; // e.g. LaserJet Pro P1102w
+  category: 'Laser' | 'Inkjet' | 'Thermal' | 'Dot Matrix' | 'Scanner' | 'MFP';
+  colorType: 'Mono' | 'Color';
+  compatibleTonerModel?: string; // e.g. "HP 85A (CE285A)"
+  ppmSpeed?: number;
+  connectionType?: 'Network' | 'USB' | 'Both' | 'Wireless';
+  duplex?: boolean;
+  remarks?: string;
+}
+
+export interface TonerModelDefinition {
+  id: string; // e.g. TNR-HP-85A
+  modelCode: string; // e.g. HP 85A (CE285A)
+  company: string; // e.g. HP
+  compatiblePrinters: string[]; // e.g. ['HP LaserJet P1102', 'HP LaserJet P1102w', 'HP LaserJet M1212nf']
+  tonerType: 'Monochrome Black' | 'Cyan' | 'Magenta' | 'Yellow' | 'Waste Toner Box' | 'Refill Powder';
+  pageYield?: number; // e.g. 1600
+  currentStock: number;
+  reorderLevel: number;
+  unitCostPkr?: number;
+  shelfLocation?: string; // e.g. "Rack B-2, IT Store"
+  remarks?: string;
+}
+
+export interface PrinterPartItem {
+  id: string; // e.g. PRT-FUS-001
+  partName: string; // e.g. Fuser Unit Assembly
+  partNumber: string; // e.g. RM1-0037-000
+  category:
+    | 'Paper Feed & Separation'
+    | 'Fuser & Heating'
+    | 'Optics & Laser Scanner'
+    | 'Electronics & Formatter'
+    | 'Consumable & Drum'
+    | 'Gears & Mechanics'
+    | 'Power Supply'
+    | 'Cables & Sensors';
+  compatibleModels: string[]; // e.g. ['HP 1102', 'HP 102', 'HP 402', 'Canon 2900']
+  company: string; // e.g. HP / Canon
+  quantityInStock: number;
+  reorderLevel: number;
+  unitCostPkr?: number;
+  storeLocation?: string; // e.g. "Cabinet 3, Drawer A"
+  condition: 'Brand New' | 'Refurbished' | 'Tested Good';
+  remarks?: string;
+}
+
 export type GatePassType = 'Returnable (Market Repair)' | 'Non-Returnable (Scrap/Replacement)';
 export type GatePassStatus = 'Pending Security Clearance' | 'Out for Market Repair' | 'Returned & Repaired' | 'Completed / Closed';
 
@@ -327,6 +444,36 @@ export interface AirportFacility {
 
 export type UserRole = 'Administrator' | 'Technician' | 'Viewer';
 
+export interface UserAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  password: string;
+  department?: string;
+  designation?: string;
+  phone?: string;
+  email?: string;
+  createdAt?: string;
+  isSystem?: boolean;
+  temporaryBypassCode?: string;
+  temporaryBypassCodeExpiresAt?: string;
+  lastPasswordResetEmailSentAt?: string;
+  lastPasswordResetToken?: string;
+}
+
+export interface LoginAttempt {
+  id: string;
+  timestamp: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  status: 'Success' | 'Failed';
+  failureReason?: string;
+  ipAddress?: string;
+  terminal?: string;
+}
+
 export interface OrganizationSettings {
   orgName: string;
   subtitle: string;
@@ -369,6 +516,51 @@ export interface UPSBackupListReport {
   verifiedByOfficerName: string;
   verifiedByOfficerSignature?: string;
   items: UPSBackupListItem[];
+}
+
+export interface UPSBackupChecklistLogSheet {
+  id: string;
+  sheetNumber: string;
+  title: string;
+  createdAt: string;
+  reportDate: string;
+  checkedByName: string;
+  supervisorName: string;
+  preparedByName?: string;
+  preparedBySig?: string;
+  preparedBySignature?: string;
+  verifiedByName?: string;
+  verifiedBySig?: string;
+  verifiedByOfficerName?: string;
+  verifiedByOfficerSignature?: string;
+  items: UPSBackupListItem[];
+  totalItems: number;
+  activeCount: number;
+  issueCount: number;
+  notes?: string;
+  logNotes?: string;
+  loggedByUser?: string;
+  loggedByUsername?: string;
+}
+
+export interface UPSBatteryReplacementLogSheet {
+  id: string;
+  sheetNumber: string;
+  title: string;
+  createdAt: string;
+  batchDate?: string;
+  chiefTechnician?: string;
+  supervisorOrVerifiedBy?: string;
+  supervisor?: string;
+  verifiedBy?: string;
+  entries: UPSBatteryReplacementEntry[];
+  totalUnitsReplaced?: number;
+  totalBatteriesCount?: number;
+  totalEntries?: number;
+  notes?: string;
+  logNotes?: string;
+  loggedByUser?: string;
+  loggedByUsername?: string;
 }
 
 export interface UPSPredictiveForecast {

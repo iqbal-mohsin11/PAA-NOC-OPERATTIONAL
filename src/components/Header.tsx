@@ -5,6 +5,8 @@ import { InternalRequisitionFormModal } from './InternalRequisitionFormModal';
 import { LogisticsReceivingModal } from './LogisticsReceivingModal';
 import { PCWebFileModal } from './PCWebFileModal';
 import { DesktopAppSetupModal } from './DesktopAppSetupModal';
+import { PWAInstallButton } from './PWAInstallButton';
+import { OfflineManagerModal } from './OfflineManagerModal';
 import {
   Shield,
   Search,
@@ -35,11 +37,20 @@ import {
   Monitor,
   Zap,
   BatteryCharging,
+  PenLine,
+  ShieldCheck,
+  Eye,
+  UserPlus,
+  Menu,
+  Smartphone,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { UserRole } from '../types/inventory';
 import { RolePasswordModal } from './RolePasswordModal';
 import { LoginModal } from './LoginModal';
 import { AutoFetchADModal } from './AutoFetchADModal';
+import { CreateUserModal } from './CreateUserModal';
 import { getUPSBatteryAlerts } from '../utils/upsBatteryAlerts';
 
 interface HeaderProps {
@@ -48,12 +59,21 @@ interface HeaderProps {
   onOpenImportExcel?: () => void;
   onSelectAsset?: (asset: any) => void;
   onNavigateTab?: (tab: string) => void;
+  onToggleMobileDrawer?: () => void;
+  onOpenMobileConnect?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onOpenSettings,
+  onNavigateTab,
+  onToggleMobileDrawer,
+  onOpenMobileConnect,
+}) => {
   const {
     settings,
     userRole,
+    currentUser,
+    userAccounts,
     setUserRole,
     isLoggedIn,
     logout,
@@ -66,6 +86,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
     assets,
     dbStatus,
     refreshDbData,
+    isOnline,
+    pendingOfflineCount,
+    lastBackupTime,
   } = useInventory();
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -80,6 +103,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   const [showPCWebFileModal, setShowPCWebFileModal] = useState(false);
   const [showDesktopAppModal, setShowDesktopAppModal] = useState(false);
   const [showAutoFetchADModal, setShowAutoFetchADModal] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
 
   const roleUsernames: Record<UserRole, string> = {
     Administrator: 'admin_paa',
@@ -103,19 +129,28 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
   return (
     <header className="sticky top-0 z-30 w-full border-b border-slate-200 bg-white/95 backdrop-blur transition-colors dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-100 shadow-sm">
       {/* Tier 1: Main Top Header (Brand, Search & Account Utilities) */}
-      <div className="flex h-14 w-full items-center justify-between px-4 border-b border-slate-100 dark:border-slate-800/60">
-        {/* Brand & Identity */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-600 via-teal-700 to-cyan-800 text-white shadow-md shadow-emerald-500/20">
+      <div className="flex h-14 w-full items-center justify-between px-3 sm:px-4 border-b border-slate-100 dark:border-slate-800/60 gap-2">
+        {/* Mobile Hamburger & Brand Identity */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Mobile Hamburger Drawer Trigger */}
+          <button
+            onClick={onToggleMobileDrawer}
+            className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 shrink-0 transition"
+            title="Open Navigation Menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-600 via-teal-700 to-cyan-800 text-white shadow-md shadow-emerald-500/20 shrink-0">
             <Shield className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-bold text-slate-900 tracking-tight text-sm sm:text-base dark:text-white">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="font-bold text-slate-900 tracking-tight text-xs sm:text-base dark:text-white truncate max-w-[130px] sm:max-w-none">
                 {settings.orgName}
               </h1>
-              <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400">
-                PAA Asset Hub v5.0
+              <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400 shrink-0">
+                v5.0
               </span>
             </div>
             <p className="hidden text-[11px] text-slate-500 sm:block dark:text-slate-400">
@@ -147,7 +182,52 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
         </div>
 
         {/* Utility Controls & Login */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Offline & Sync Status Button */}
+          <button
+            type="button"
+            onClick={() => setShowOfflineModal(true)}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border text-xs font-semibold transition shrink-0 ${
+              isOnline
+                ? pendingOfflineCount > 0
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 shadow-2xs'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                : 'border-amber-400 bg-amber-500 text-white font-bold animate-pulse shadow-xs'
+            }`}
+            title={
+              isOnline
+                ? pendingOfflineCount > 0
+                  ? `${pendingOfflineCount} offline changes queued | Periodic crash backup: ${lastBackupTime || 'Active'}`
+                  : `100% Offline Ready | Crash Backup: ${lastBackupTime || 'Guarded'}`
+                : `Working in Offline Mode | Continuous storage backup: ${lastBackupTime || 'Active'}`
+            }
+          >
+            {isOnline ? (
+              <Wifi className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : (
+              <WifiOff className="h-3.5 w-3.5 text-white shrink-0" />
+            )}
+            <span className="hidden xl:inline text-[11px]">
+              {!isOnline
+                ? 'Offline'
+                : pendingOfflineCount > 0
+                ? `${pendingOfflineCount} Queued`
+                : 'Offline Ready'}
+            </span>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                !isOnline
+                  ? 'bg-white'
+                  : pendingOfflineCount > 0
+                  ? 'bg-amber-500 animate-ping'
+                  : 'bg-emerald-500'
+              }`}
+            />
+          </button>
+
+          {/* PWA Install Button */}
+          <PWAInstallButton />
+
           {/* MongoDB Server Status Button */}
           <button
             onClick={() => setShowPCWebFileModal(true)}
@@ -209,6 +289,35 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
           >
             <Monitor className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             <span className="hidden sm:inline">Desktop App (.exe)</span>
+          </button>
+
+          {/* Add User / Admin Quick Button */}
+          <button
+            onClick={() => setShowCreateUserModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/90 px-2.5 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 shadow-2xs"
+            title="Create New User / Administrator Account"
+          >
+            <UserPlus className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+            <span className="hidden sm:inline">+ Add User</span>
+          </button>
+
+          {/* Open on Mobile / Smartphone QR */}
+          <button
+            onClick={onOpenMobileConnect}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50/90 px-2 sm:px-2.5 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60 shadow-2xs shrink-0"
+            title="Open on Mobile / Smartphone (Scan QR)"
+          >
+            <Smartphone className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Open on Mobile</span>
+          </button>
+
+          {/* Mobile Search Toggle */}
+          <button
+            onClick={() => setIsMobileSearchExpanded(!isMobileSearchExpanded)}
+            className="flex md:hidden h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 shrink-0"
+            title="Search Assets"
+          >
+            <Search className="h-4 w-4" />
           </button>
 
           {/* System Settings Button */}
@@ -316,79 +425,164 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
           )}
         </div>
 
-        {/* User Login & Logout Controls */}
-        <div className="relative flex items-center gap-2">
+        {/* User Login, Identity & Access Level Indicator (Write vs. Read-Only) */}
+        <div className="relative flex items-center gap-1.5 sm:gap-2">
           {isLoggedIn ? (
-            <>
+            <div className="flex items-center rounded-xl border border-slate-200/90 bg-slate-50/95 p-1 shadow-xs dark:border-slate-800 dark:bg-slate-800/90">
+              {/* Active User Card & Access Indicator Button */}
               <button
                 onClick={() => setShowLoginModal(true)}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-3 py-1.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-600 transition"
-                title="Click to view user credentials or switch login"
+                className="group flex items-center gap-2 rounded-lg px-2.5 py-1 text-xs transition hover:bg-white dark:hover:bg-slate-700/70"
+                title={`Active User: ${currentUser?.displayName || currentUser?.username || roleUsernames[userRole]} (${userRole})\nAccess Level: ${userRole === 'Administrator' ? 'Full Write & Admin' : userRole === 'Technician' ? 'Write Data & View Data Only' : 'View Data Only (Read-Only)'}\nClick to view credentials or switch accounts`}
               >
-                <User className="h-4 w-4" />
+                {/* User Avatar Circle */}
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black shadow-2xs ${
+                    userRole === 'Administrator'
+                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
+                      : userRole === 'Technician'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                      : 'bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300'
+                  }`}
+                >
+                  {(currentUser?.username || userRole).charAt(0).toUpperCase()}
+                </div>
+
+                {/* Name & Access Level Status Badge */}
                 <div className="flex flex-col text-left leading-tight">
-                  <span className="text-[11px] font-extrabold flex items-center gap-1">
-                    <span>{roleUsernames[userRole]}</span>
-                    <span className="text-[9px] font-normal opacity-80">({userRole})</span>
-                  </span>
-                  <span className="text-[9px] font-semibold text-emerald-100 opacity-90">Account & Passwords</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-slate-900 dark:text-white text-xs max-w-[130px] truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition">
+                      {currentUser?.username || roleUsernames[userRole]}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      ({userRole})
+                    </span>
+                  </div>
+
+                  {/* Access Level Pill: Write Access vs Read-Only */}
+                  <div className="mt-0.5 flex items-center gap-1">
+                    {userRole === 'Administrator' || userRole === 'Technician' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 dark:bg-emerald-950/60">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <PenLine className="h-2.5 w-2.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>Write Access</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-extrabold text-sky-700 dark:text-sky-300 dark:bg-sky-950/60">
+                        <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shrink-0" />
+                        <Eye className="h-2.5 w-2.5 shrink-0 text-sky-600 dark:text-sky-400" />
+                        <span>Read-Only</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </button>
 
+              {/* Quick Account Switch Dropdown Trigger */}
               <button
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                title="Switch User Role"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-white hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition"
+                title="Switch User Account or Access Level"
               >
-                <ChevronDown className="h-4 w-4 text-slate-500" />
+                <ChevronDown className="h-3.5 w-3.5" />
               </button>
 
+              {/* Logout Button */}
               <button
                 onClick={logout}
-                className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/50 dark:text-rose-400 transition"
+                className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950/50 dark:hover:text-rose-400 transition"
                 title="Log Out of Active Session"
               >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Log Out</span>
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Log Out</span>
               </button>
-            </>
+            </div>
           ) : (
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-500 transition"
-              title="Click to Log In"
-            >
-              <LogIn className="h-4 w-4" />
-              <span>Log In</span>
-            </button>
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-1 dark:border-slate-800 dark:bg-slate-800/90">
+              <span className="inline-flex items-center gap-1 rounded bg-slate-200/70 border border-slate-300/80 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300">
+                <Eye className="h-3 w-3 shrink-0" />
+                <span>Read-Only (Guest)</span>
+              </span>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-emerald-500 transition"
+                title="Click to Log In"
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                <span>Log In</span>
+              </button>
+            </div>
           )}
 
           {showRoleMenu && isLoggedIn && (
-            <div className="absolute right-0 top-11 z-50 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-              <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Select Active Role</div>
-              {roles.map((r) => (
+            <div className="absolute right-0 top-12 z-50 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                User Accounts & Access Levels
+              </div>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {userAccounts.map((account) => {
+                  const isAccountActive = currentUser?.username.toLowerCase() === account.username.toLowerCase();
+                  const isAccountWrite = account.role === 'Administrator' || account.role === 'Technician';
+                  return (
+                    <button
+                      key={account.id}
+                      onClick={() => {
+                        setShowRoleMenu(false);
+                        setShowLoginModal(true);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-medium transition ${
+                        isAccountActive
+                          ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50'
+                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/70'
+                      }`}
+                    >
+                      <div className="flex flex-col text-left">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-extrabold text-slate-900 dark:text-white">{account.username}</span>
+                          <span
+                            className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.2 text-[9px] font-bold border ${
+                              isAccountWrite
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800'
+                            }`}
+                          >
+                            {isAccountWrite ? (
+                              <>
+                                <PenLine className="h-2 w-2 text-emerald-600 dark:text-emerald-400" />
+                                <span>Write Access</span>
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-2 w-2 text-sky-600 dark:text-sky-400" />
+                                <span>Read-Only</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-normal mt-0.5">
+                          {account.role} &bull; {account.displayName}
+                        </span>
+                      </div>
+                      {isAccountActive && (
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0 shadow-2xs" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-1.5 border-t border-slate-100 pt-1.5 dark:border-slate-800 space-y-1">
                 <button
-                  key={r}
                   onClick={() => {
                     setShowRoleMenu(false);
-                    if (r !== userRole) {
-                      setTargetRoleForAuth(r);
-                    }
+                    setShowCreateUserModal(true);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                    userRole === r
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold'
-                      : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }`}
+                  className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
                 >
-                  <div className="flex flex-col text-left">
-                    <span>{r}</span>
-                    <span className="text-[9px] font-mono text-slate-400">{roleUsernames[r]}</span>
-                  </div>
-                  {userRole === r && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>}
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>+ Add User / Admin Account</span>
                 </button>
-              ))}
-              <div className="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
+
                 <button
                   onClick={() => {
                     setShowRoleMenu(false);
@@ -397,7 +591,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
                   className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
                 >
                   <KeyRound className="h-3.5 w-3.5" />
-                  <span>View All Login Passwords</span>
+                  <span>Switch Account / Change Password</span>
                 </button>
               </div>
             </div>
@@ -405,6 +599,38 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
         </div>
       </div>
     </div>
+      
+      {/* Mobile Expanded Search Bar */}
+      {isMobileSearchExpanded && (
+        <div className="flex md:hidden w-full px-3 py-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/95 dark:bg-slate-800/80 animate-in slide-in-from-top-2 duration-150">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search Asset ID, Serial, IP, User..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-8 py-2 text-xs font-medium text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
+            {searchQuery ? (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsMobileSearchExpanded(false)}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <RolePasswordModal
         isOpen={!!targetRoleForAuth}
@@ -447,6 +673,17 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSettings, onNavigateTab })
         isOpen={showAutoFetchADModal}
         onClose={() => setShowAutoFetchADModal(false)}
         onNavigateToADSync={() => onNavigateTab?.('adsync')}
+      />
+
+      <CreateUserModal
+        isOpen={showCreateUserModal}
+        onClose={() => setShowCreateUserModal(false)}
+      />
+
+      <OfflineManagerModal
+        isOpen={showOfflineModal}
+        onClose={() => setShowOfflineModal(false)}
+        isOnline={isOnline}
       />
     </header>
   );

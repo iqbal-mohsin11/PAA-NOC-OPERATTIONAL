@@ -311,7 +311,7 @@ export const UPSFormModal: React.FC<UPSFormModalProps> = ({
       status: backupStatus === 'NO BACKUP' ? 'Maintenance' : status,
       isRemoved: false,
       images: {
-        devicePhoto: assetToEdit?.images?.devicePhoto || 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80',
+        devicePhoto: assetToEdit?.images?.devicePhoto || '/eaton_dx1000.webp',
       },
       upsSpecs: upsSpecsPayload,
       pingStatus: backupStatus === 'NO BACKUP' ? 'Warning' : 'Online',
